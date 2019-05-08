@@ -35,7 +35,7 @@ cfn:version.txt $(templates)
 	cp $(zip) ../../deployment/ops-automator-$(version).zip
 
 deploy: build
-	aws s3 cp $(dest) $(s3bucket) --recursive --acl public-read
+	aws s3 cp $(dest) $(s3bucket) --recursive
 	python update-build-number.py version.txt
 
 clean:
