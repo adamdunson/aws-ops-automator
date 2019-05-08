@@ -60,7 +60,7 @@ RESOURCES_WITH_TAGS = [
     SNAPSHOTS
 ]
 
-ARN = "arn:aws:elasticache:{}:{}:{}:{}"
+ARN = "arn:aws-us-gov:elasticache:{}:{}:{}:{}"
 
 
 class ElasticacheService(AwsService):

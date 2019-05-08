@@ -341,7 +341,7 @@ class TaskTrackingTable:
             "Records": [
                 {
                     "eventName": table_action,
-                    "eventSourceARN": "arn:aws:dynamodb:{}:{}:table/{}/stream/{}".format(region, account, table,
+                    "eventSourceARN": "arn:aws-us-gov:dynamodb:{}:{}:table/{}/stream/{}".format(region, account, table,
                                                                                       datetime.utcnow().isoformat()),
                     "eventSource": "aws:dynamodb",
                     "dynamodb": {

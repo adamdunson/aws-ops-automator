@@ -27,7 +27,7 @@ from boto_retry import add_retry_methods_to_resource, get_client_with_retries
 from scheduling.cron_expression import CronExpression
 from services.aws_service import AwsService
 
-VALID_ARN_REGEX = r"^arn:aws:iam::\d{12}:role\/[a-zA-Z0-9=,_.@-]{1,64}$"
+VALID_ARN_REGEX = r"^arn:aws[a-z-]*:iam::\d{12}:role\/[a-zA-Z0-9=,_.@-]{1,64}$"
 
 DEFAULT_TIMEZONE = "UTC"
 
@@ -644,56 +644,56 @@ class TaskConfiguration:
         """
         Verifies the parameters for creating or updating a task configuration item
         :param task_attributes: The configuration parameters
-    
+
         Constants can be found in configuration/__init__.py
         -CONFIG_ACTION_NAME: Name of the action executed by the task, exception is raised if not specified or action does not
         exist (mandatory, string)
-    
+
         -CONFIG_DEBUG: Set to True to log additional debug information for this task (optional, default False, boolean)
-    
+
         -CONFIG_DESCRIPTION: Task description(optional, default None, string)
-    
+
         -CONFIG_CROSS_ACCOUNT_ROLES: List of cross accounts for cross account processing. Note that roles if the account of a role
         has already been found in another role, or if the account of a role is the processed account of the scheduler a warning
         is generated when executing the task and the role is skipped (optional, default [], List<string>)
-    
+
         -CONFIG_ENABLED: Set to True to enable execution of task, False to suspend executions (optional, default True, boolean)
-    
+
         -CONFIG_INTERNAL: Flag to indicate task is used for internal  tasks of the scheduler (optional, default False, boolean)
-        
+
         -CONFIG_TASK_TIMEOUT: Timeout in minutes for task to complete (optional,default is action's value or global timeout, number)
-    
+
         -CONFIG_INTERVAL: Cron expression to schedule time/date based execution of task (optional, default "", string)
-    
+
         -CONFIG_TASK_NAME: Name of the task, exception is raised if not specified or name does already exist (mandatory, string)
-    
+
         -CONFIG_PARAMETERS: dictionary with names and values passed to the executed action of this task (optional, default {},
         dictionary)
-    
+
         -CONFIG_THIS_ACCOUNT: Set to True to run tasks for resources in the account of the (optional, default True, boolean)
-    
+
         -CONFIG_TIMEZONE: Timezone for time/date based tasks for this task (optional, default UTC, string)
-    
+
         -CONFIG_TAG_FILTER: Tag filter used to select resources for the task instead of name of task in the list of values for the
         automation tag. Only allowed if selected resources support tags (optional, default "", string)
-    
+
         -CONFIG_REGIONSs: Regions in which to run the task. Use "*" for all regions in which the service for this tasks action is
         available.
         If no regions are specified the region in which the scheduler is installed is used as default. Specifying one or more
         regions for services tha are not region specific will generate a warning when processing the task. (optional,
         default current region, List<string>)
-    
+
         -CONFIG_STACK_ID: Id of the stack if the task is created as part of a cloudformation template (optional, default None,
         string)
-    
+
         -CONFIG_DRYRUN: Dryrun parameter passed to the executed action (optional, default False, boolean)
-    
+
         -CONFIG_EVENTS: List of resource events that trigger the task to be executed  (optional, default, List<string>)
-    
+
         -CONFIG_DRYRUN: Dryrun parameter passed to the executed action (optional, default False, boolean)
-    
+
         -CONFIG_EVENTS: List of resource events that trigger the task to be executed  (optional, default, List<string>)
-    
+
         :return: Verified configuration item
         """
 

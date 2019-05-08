@@ -236,9 +236,9 @@ class AwsService:
             return self.role_arn
         if self._assumed_role is None:
             arn = self.sts_client.get_caller_identity()["Arn"]
-            if re.match("^arn:aws:iam::\\d{12}:role/", arn):
+            if re.match("^arn:aws[a-z-]*:iam::\\d{12}:role/", arn):
                 self._assumed_role = "/".join(
-                    arn.replace("arn:aws:sts::", "arn:aws:iam::").replace(":assumed-role/", ":role/").split("/")[0:-1])
+                    arn.replace("arn:aws-us-gov:sts::", "arn:aws-us-gov:iam::").replace(":assumed-role/", ":role/").split("/")[0:-1])
         return self._assumed_role
 
     @staticmethod

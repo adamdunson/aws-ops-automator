@@ -124,7 +124,7 @@ class ActionTemplateBuilder:
     def _setup_template(self):
         """
         Initial setup of template
-        :return: 
+        :return:
         """
         self._template = OrderedDict()
         self._template["AWSTemplateFormatVersion"] = "2010-09-09"
@@ -147,13 +147,13 @@ class ActionTemplateBuilder:
     def _setup_common_parameters(self):
         """
         Setup non action specific parameters
-        :return: 
+        :return:
         """
 
         def setup_region_parameter():
             """
             Create the region parameter
-            :return: 
+            :return:
             """
             if self.has_regions_parameter:
                 self._template_parameters[configuration.CONFIG_REGIONS] = {
@@ -167,7 +167,7 @@ class ActionTemplateBuilder:
         def setup_cross_account_parameters():
             """
             Creates cross account parameter
-            :return: 
+            :return:
             """
 
             if self.action_properties.get(actions.ACTION_CROSS_ACCOUNT, True):
@@ -193,7 +193,7 @@ class ActionTemplateBuilder:
         def setup_timeout_parameter():
             """
             Creates a timeout parameter if the task has a completion check method
-            :return: 
+            :return:
             """
 
             if not self.has_timeout_parameter:
@@ -305,13 +305,13 @@ class ActionTemplateBuilder:
     def _setup_action_parameters(self):
         """
         Creates the action specific parameters from its metadata
-        :return: 
+        :return:
         """
 
         def setup_action_parameter_groups():
             """
             Action parameter groups
-            :return: 
+            :return:
             """
             for group in self.action_properties.get(actions.ACTION_PARAMETER_GROUPS, []):
                 self._parameter_groups.append({
@@ -369,7 +369,7 @@ class ActionTemplateBuilder:
     def _setup_resources(self):
         """
         Setup action custom resource that creates the task
-        :return: 
+        :return:
         """
 
         task_resource = {
