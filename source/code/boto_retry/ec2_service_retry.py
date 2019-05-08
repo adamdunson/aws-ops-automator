@@ -26,12 +26,12 @@ class Ec2ServiceRetry(AwsApiServiceRetry):
             timeout=timeout,
             lambda_time_out_margin=lambda_time_out_margin)
 
-        self._call_retry_strategies += [self.snaphot_creation_per_volume_throotles,
+        self._call_retry_strategies += [self.snapshot_creation_per_volume_throttled,
                                         self.resource_limit_exceeded,
                                         self.request_limit_exceeded]
 
     @classmethod
-    def snaphot_creation_per_volume_throotles(cls, ex):
+    def snapshot_creation_per_volume_throttled(cls, ex):
         """
         Retries in case the snapshot creation rate is exceeded for a volume
         :param ex: Exception to test

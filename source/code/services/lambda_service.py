@@ -66,7 +66,7 @@ class LambdaService(AwsService):
         AwsService.__init__(self, service_name='lambda',
                             resource_names=RESOURCE_NAMES,
                             role_arn=role_arn, session=session,
-                            resources_with_tags=[FUNCTION,FUNCTIONS],
+                            resources_with_tags=[FUNCTION, FUNCTIONS],
                             tags_as_dict=tags_as_dict,
                             as_named_tuple=as_named_tuple,
                             custom_result_paths=CUSTOM_RESULT_PATHS,
@@ -98,7 +98,7 @@ class LambdaService(AwsService):
         if resource_name == FUNCTION:
             tags = resource.get("Tags", {})
         else:
-            tags = client.list_tags( Resource = resource["FunctionArn"]).get("Tags")
+            tags = client.list_tags(Resource=resource["FunctionArn"]).get("Tags")
         return [{"Key": t, "Value": tags[t]} for t in tags]
 
     def _get_tag_resource(self, resource_name):
@@ -111,6 +111,3 @@ class LambdaService(AwsService):
             return TAGS
         else:
             return None
-
-
-

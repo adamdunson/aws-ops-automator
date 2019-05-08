@@ -65,7 +65,7 @@ class TimeService(AwsService):
         Regions that can be used for this service, return all AWS regions (assuming they all support EC2)
         :return: Service regions
         """
-        return boto3.Session().get_available_regions(service_name="ec2")
+        return boto3.Session().get_available_regions(service_name="ec2", partition_name='aws-us-gov')
 
     def get(self, region=None, as_tuple=None, **kwargs):
         """

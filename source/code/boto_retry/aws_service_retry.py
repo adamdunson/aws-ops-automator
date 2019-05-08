@@ -47,12 +47,7 @@ class AwsApiServiceRetry:
         :param ex: 
         :return: 
         """
-        if type(ex) == ClientError:
-            return False
-
-        response = getattr(ex, "response", {})
-        metadata = response.get("ResponseMetaData", {})
-        return metadata.get("HTTPStatusCode", 0) == 400 and metadata.get("RetryAttempts", 0) > 0 and "throttling" in ex.message
+        return "throttling" in ex.message.lower()
 
     @classmethod
     def service_not_available(cls, ex):
@@ -66,7 +61,7 @@ class AwsApiServiceRetry:
 
         response = getattr(ex, "response", {})
         metadata = response.get("ResponseMetaData", {})
-        return metadata.get("HTTPStatusCode", 0) == 503
+        return metadata.get("HTTPStatusCode", 0) in [500, 502, 503, 504]
 
     def can_retry(self, ex):
         """

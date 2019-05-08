@@ -41,8 +41,8 @@ ERR_DELETING_ACTION_TEMPLATE = "Deleting templates for action \"{}\""
 ERR_DELETING_STACK = "Error deleting  {}, ({})"
 
 INF_CREATE_ACTION_TEMPLATE = "Creating template for action \"{}\", name is \"{}\""
-INF_CREATE_ALL_ACTIONS_CROSS_ROLES_TEMPLAE = "Creating cross role template for all actions, name is \"{}\""
-INF_CREATECROSS_ROLE_TEMPLATE = "Creating cross role template for action \"{}\", name is \"{}\""
+INF_CREATE_ALL_ACTIONS_CROSS_ROLES_TEMPLATE = "Creating cross role template for all actions, name is \"{}\""
+INF_CREATE_CROSS_ROLE_TEMPLATE = "Creating cross role template for action \"{}\", name is \"{}\""
 INF_DELETE_ALL_ACTIONS_TEMPLATE = "Deleting cross account role template \"{}\""
 INF_DELETED_STACKS = "Stacks to delete: {}"
 INF_DELETING_STACKS = "Deleting external task configuration stacks"
@@ -279,13 +279,13 @@ class SetupHelperHandler(CustomResource):
 
         def generate_action_cross_account_role_template(s3, builder, action, template_description):
             role_template = S3_ROLES_TEMPLATE.format(action)
-            self._logger.info(INF_CREATECROSS_ROLE_TEMPLATE, action, role_template)
+            self._logger.info(INF_CREATE_CROSS_ROLE_TEMPLATE, action, role_template)
             template = json.dumps(builder.build_template(role_actions=[action], description=template_description), indent=3)
             s3.put_object_with_retries(Body=template, Bucket=self.configuration_bucket, Key=role_template)
 
         def generate_all_actions_cross_cross_account_role_template(s3, builder, allactions, template_description):
             role_template = S3_ROLES_TEMPLATE.format(ALL_ACTIONS_TEMPLATE_NAME)
-            self._logger.info(INF_CREATE_ALL_ACTIONS_CROSS_ROLES_TEMPLAE, role_template)
+            self._logger.info(INF_CREATE_ALL_ACTIONS_CROSS_ROLES_TEMPLATE, role_template)
             template = json.dumps(builder.build_template(role_actions=allactions, description=template_description), indent=3)
             s3.put_object_with_retries(Body=template, Bucket=self.configuration_bucket, Key=role_template)
 

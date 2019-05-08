@@ -26,7 +26,7 @@ PARAM_DESC_ACCOUNTS_RESTORE_ACCESS = "Comma separated list of accounts that will
 
 PARAM_LABEL_COPIED_CLUSTER_TAGS = "Copied cluster tags"
 PARAM_LABEL_SNAPSHOT_TAGS = "Snapshot tags"
-PARAM_LABEL_CCOUNTS_RESTORE_ACCESS = "Grant restore access to accounts"
+PARAM_LABEL_ACCOUNTS_RESTORE_ACCESS = "Grant restore access to accounts"
 
 SNAPSHOT_NAME = "{}-{:0>4d}{:0>2d}{:0>2d}{:0>02d}{:0>02d}"
 
@@ -45,7 +45,7 @@ class RedshiftCreateSnapshotAction:
     properties = {
         ACTION_TITLE: "RedShift Create Snapshot",
         ACTION_VERSION: "1.0",
-        ACTION_DESCRIPION: "Creates manual type snapshot for Redshift cluster",
+        ACTION_DESCRIPTION: "Creates manual type snapshot for Redshift cluster",
         ACTION_AUTHOR: "AWS",
         ACTION_ID: "6310b757-d8a8-4031-af29-29b9fc5bcf65",
 
@@ -74,7 +74,7 @@ class RedshiftCreateSnapshotAction:
                 PARAM_DESCRIPTION: PARAM_DESC_ACCOUNTS_RESTORE_ACCESS,
                 PARAM_TYPE: type([]),
                 PARAM_REQUIRED: False,
-                PARAM_LABEL: PARAM_LABEL_CCOUNTS_RESTORE_ACCESS
+                PARAM_LABEL: PARAM_LABEL_ACCOUNTS_RESTORE_ACCESS
             }
 
         },
@@ -114,7 +114,7 @@ class RedshiftCreateSnapshotAction:
         self.snapshot_tags = {}
         for tag in self._arguments.get(PARAM_SNAPSHOT_TAGS, "").split(","):
             t = tag.partition("=")
-            self.snapshot_tags[t[0]] = t[2]
+            self.snapshot_tags[t[0].strip()] = t[2].strip()
 
         self.logger.debug("Arguments {}", self._arguments)
         self.granted_accounts = self._arguments.get(PARAM_ACCOUNTS_RESTORE_ACCESS, [])
@@ -153,7 +153,7 @@ class RedshiftCreateSnapshotAction:
         self.result["snapshot-create-time"] = create_snapshot_resp["Snapshot"]["SnapshotCreateTime"]
         self.logger.info(INFO_SNAPSHOT_CREATED, snapshot_name)
 
-        if  self.granted_accounts is not None and len(self.granted_accounts) > 0:
+        if self.granted_accounts is not None and len(self.granted_accounts) > 0:
             for account in self.granted_accounts:
                 redshift.authorize_snapshot_access_with_retries(SnapshotIdentifier=snapshot_name,
                                                                 SnapshotClusterIdentifier=self.cluster_id,

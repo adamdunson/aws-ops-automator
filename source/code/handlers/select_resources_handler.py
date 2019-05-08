@@ -57,7 +57,7 @@ INFO_SELECTED_RESOURCES = "Selecting resources of type \"{}\" from service \"{}\
 INFO_TASK_AGGREGATED = "Added action item {} for {} aggregated resources of type {} for task {}"
 INFO_USE_TAGS_TO_SELECT = "{}esource tags are used to select resources"
 
-ERR_CAN_NOT_EXECUTE_WITH_THESE_RESOURSES = "Can not execute action \"{}\" for task \"{}\", reason {}"
+ERR_CAN_NOT_EXECUTE_WITH_THESE_RESOURCES = "Can not execute action \"{}\" on (sub)set of resources for task \"{}\" reason {}"
 
 MSG_NO_CROSS_ACCOUNT_ROLE = "No cross account role configured for task {} for account {} to select resources"
 
@@ -136,7 +136,7 @@ class SelectResourcesHandler:
                 check_method(selected_resources, self.task_parameters)
                 return True
             except ValueError as ex:
-                self._logger.error(ERR_CAN_NOT_EXECUTE_WITH_THESE_RESOURSES, self.task[handlers.TASK_ACTION],
+                self._logger.error(ERR_CAN_NOT_EXECUTE_WITH_THESE_RESOURCES, self.task[handlers.TASK_ACTION],
                                    self.task[handlers.TASK_NAME], str(ex))
                 return False
         return True
@@ -213,7 +213,7 @@ class SelectResourcesHandler:
 
             if tags_filter is None:
                 # test if name of the task is in list of tasks in tag value
-                if tagname in tags and taskname in tags[tagname].split(","):
+                if tagname in tags and taskname in [t.strip() for t in tags[tagname].split(",")]:
                     self._logger.debug(DEBUG_SELECTED_BY_TASK_NAME_IN_TAG_VALUE, safe_json(resource, indent=2),
                                        tagname, taskname)
                     return True
@@ -328,9 +328,9 @@ class SelectResourcesHandler:
                             task_level_aggregated_resources += selected
                         elif self.aggregation_level == actions.ACTION_AGGREGATION_ACCOUNT:
 
-                            if self._check_can_execute(selected):
-                                # create tasks action for account aggregated resources , optionally split in batch size chunks
-                                for r in resource_batches(selected):
+                            # create tasks action for account aggregated resources , optionally split in batch size chunks
+                            for r in resource_batches(selected):
+                                if self._check_can_execute(r):
                                     action_item = actions_tracking.add_task_action(
                                         task=self.task,
                                         assumed_role=assumed_role,
@@ -359,8 +359,8 @@ class SelectResourcesHandler:
 
                 if self.aggregation_level == actions.ACTION_AGGREGATION_TASK and len(task_level_aggregated_resources) > 0:
 
-                    if self._check_can_execute(task_level_aggregated_resources):
-                        for r in resource_batches(task_level_aggregated_resources):
+                    for r in resource_batches(task_level_aggregated_resources):
+                        if self._check_can_execute(r):
                             # create tasks action for task aggregated resources , optionally split in batch size chunks
                             action_item = actions_tracking.add_task_action(
                                 task=self.task,
@@ -370,8 +370,8 @@ class SelectResourcesHandler:
                                 source=self.source)
 
                             items.append(action_item)
-                            self._logger.info(INFO_TASK_AGGREGATED, action_item[tracking.TASK_TR_ID], len(r), self.resource_name,
-                                              self.task[handlers.TASK_NAME])
+                            self._logger.info(INFO_TASK_AGGREGATED, action_item[tracking.TASK_TR_ID], len(r),
+                                              self.resource_name, self.task[handlers.TASK_NAME])
 
             self._logger.info(INFO_ADDED_ITEMS, len(items), self.task[handlers.TASK_NAME])
 

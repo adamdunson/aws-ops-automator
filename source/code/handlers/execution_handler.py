@@ -31,6 +31,8 @@ ERR_EXECUTION_TASK = "Error execution of {} for task {}, ({})\n {}"
 ERR_EXECUTING_ACTION = "Error running executing logic for action: {}"
 ERR_EXECUTING_COMPLETION_CHECK = "Error running task completion check method : {}"
 ERR_TASK_TIMEOUT = "Timeout waiting for completion of task after {}."
+ERR_READING_S3_RESOURCES = "Error reading action resources from bucket {}, key {} for task {}, {}"
+
 INFO_ACTION = "Executing action {} ({}) {}for task {} with parameters {}"
 INFO_ACTION_NOT_COMPLETED = "Action not completed after {}, waiting for next completion check"
 INFO_ACTION_RESULT = "Action completed in {:>.3f} seconds, result is {}"
@@ -64,7 +66,6 @@ class ExecutionHandler:
         self.action = self._event[tracking.TASK_TR_ACTION]
         self.test_completion_method = getattr(actions.get_action_class(self.action), handlers.COMPLETION_METHOD, None)
         self.action_parameters = json.loads(self._event.get(tracking.TASK_TR_PARAMETERS, "{}"))
-        self.action_resources = json.loads(self._event.get(tracking.TASK_TR_RESOURCES, "{}"))
         self.dryrun = self._event.get(tracking.TASK_TR_DRYRUN)
         self.debug = self._event.get(tracking.TASK_TR_DEBUG)
         self.started_at = float(self._event.get(tracking.TASK_TR_STARTED_TS, 0))
@@ -76,8 +77,12 @@ class ExecutionHandler:
         self.action_properties = actions.get_action_properties(self.action)
         self.action_class = actions.get_action_class(self.action)
         self._stack_resources = None
-        self.timeout = self._event.get(tracking.TASK_TR_TIMEOUT)
+        timeout = self._event.get(tracking.TASK_TR_TIMEOUT, "0")
+        self.timeout = (int(timeout) * 60) if timeout not in ["None", None] else 0
         self.execution_log_stream = self._event.get(tracking.TASK_TR_EXECUTION_LOGSTREAM)
+
+        self._s3_client = None
+        self._action_resources = None
 
         # setup logging
         if self.execution_log_stream is None:
@@ -100,6 +105,32 @@ class ExecutionHandler:
         """
         return event.get(handlers.HANDLER_EVENT_ACTION, "") in [handlers.HANDLER_ACTION_EXECUTE,
                                                                 handlers.HANDLER_ACTION_TEST_COMPLETION]
+
+    @property
+    def s3_client(self):
+
+        if self._s3_client is None:
+            self._s3_client = get_client_with_retries("s3", ["get_object"])
+        return self._s3_client
+
+    @property
+    def action_resources(self):
+        if self._action_resources is None:
+            resource_data = self._event.get(tracking.TASK_TR_RESOURCES, None)
+            if resource_data is not None:
+                self._action_resources = json.loads(resource_data)
+            elif self._event.get(tracking.TASK_TR_S3_RESOURCES, False):
+                bucket = os.getenv(handlers.ENV_RESOURCE_BUCKET)
+                key = self.action_id + ".json"
+                try:
+                    resp = self.s3_client.get_object_with_retries(Bucket=bucket, Key=key)
+                    self._action_resources = json.loads(resp["Body"].read().decode('utf-8'))
+                except Exception as ex:
+                    raise  Exception(ERR_READING_S3_RESOURCES.format(bucket, key, self.action_id, ex))
+            else:
+                self._action_resources = {}
+
+        return self._action_resources
 
     @property
     def stack_resources(self):
@@ -161,7 +192,8 @@ class ExecutionHandler:
 
         self._logger.info(INFO_ACTION, self.action, self.action_id, "in dry-run mode " if self.dryrun else "", self.task,
                           json.dumps(self.action_parameters, indent=2))
-        self._logger.info(INFO_LAMBDA_MEMORY, self._context.function_name, self._context.memory_limit_in_mb)
+        if self._context is not None:
+            self._logger.info(INFO_LAMBDA_MEMORY, self._context.function_name, self._context.memory_limit_in_mb)
 
         self._action_tracking.update_action(self.action_id, status=tracking.STATUS_STARTED)
 
@@ -179,14 +211,14 @@ class ExecutionHandler:
         if not action_instance.properties.get(actions.ACTION_INTERNAL, False):
             handle_metrics(action_result)
 
-        execution_time = round(float((time() - start)), 3)
+        execution_time = int(float((time() - self.started_at)))
 
         if self.test_completion_method is None or self.dryrun:
 
             self._action_tracking.update_action(action_id=self.action_id,
                                                 status=tracking.STATUS_COMPLETED,
                                                 status_data={
-                                                    tracking.TASK_TR_STARTED_TS: datetime.now().isoformat(),
+                                                    tracking.TASK_TR_STARTED_TS: int(start),
                                                     tracking.TASK_TR_RESULT: str(action_result),
                                                     tracking.TASK_TR_EXECUTION_TIME: str(execution_time),
                                                     tracking.TASK_TR_EXECUTION_LOGSTREAM: self.execution_log_stream
@@ -227,7 +259,7 @@ class ExecutionHandler:
             INFO_CHECK_TASK_COMPLETION, self.action, self.task, self.action_id, json.dumps(self.action_parameters, indent=2),
             self.start_result)
 
-        execution_time = round(float((time() - self.started_at)), 3)
+        execution_time = int(float((time() - self.started_at)))
 
         execution_time_str = str(timedelta(seconds=execution_time))
 

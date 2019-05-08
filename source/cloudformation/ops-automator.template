@@ -56,6 +56,58 @@ Parameters:
       - 1827
       - 3653
     Description: Retention days for scheduler logs.
+  LambdaSize:
+    Type: Number
+    Description: Lambda function size, increment size when processing large amounts
+      of resources
+    Default: 128
+    AllowedValues:
+      - 128
+      - 192
+      - 256
+      - 320
+      - 384
+      - 448
+      - 512
+      - 576
+      - 640
+      - 704
+      - 768
+      - 832
+      - 896
+      - 960
+      - 1024
+      - 1088
+      - 1152
+      - 1216
+      - 1280
+      - 1344
+      - 1408
+      - 1472
+      - 1536
+      - 1600
+      - 1664
+      - 1728
+      - 1792
+      - 1856
+      - 1920
+      - 1984
+      - 2048
+      - 2112
+      - 2176
+      - 2240
+      - 2304
+      - 2368
+      - 2432
+      - 2496
+      - 2560
+      - 2624
+      - 2688
+      - 2752
+      - 2816
+      - 2880
+      - 2944
+      - 3008
   ConfigBackupDays:
     Type: Number
     Default: 30
@@ -76,12 +128,13 @@ Metadata:
         Parameters:
           - TagName
       - Label:
-          default: Maintenace
+          default: Maintenance
         Parameters:
           - EnableTaskCleanup
           - RetainFailedTasks
           - SchedulerActive
           - TaskRetentionHours
+          - LambdaSize
     ParameterLabels:
       EnableTaskCleanup:
         default: Cleanup Task Tracking Table
@@ -95,6 +148,8 @@ Metadata:
         default: Hours to keep tasks
       ConfigBackupDays:
         default: Days to keep configuration backups
+      LambdaSize:
+        default: Lambda size (MB)
       SendAnonymousData:
         default: Send anonymous usage data
 Conditions:
@@ -117,8 +172,33 @@ Mappings:
       Value: 'False'
   Settings:
     Metrics:
-      Url: https://oszclq8tyh.execute-api.us-east-1.amazonaws.com/prod/generic
+      Url: https://metrics.awssolutionsbuilder.com/generic
       SolutionId: S00029
+    Resources:
+      ResourceToS3SizeKB: 16
+    DynamoDbTableCapacities:
+      TrackingTableMinRead: 5
+      TrackingTableMaxRead: 100
+      TrackingTableMinWrite: 5
+      TrackingTableMaxWrite: 100
+      TrackingTableCompletionMinRead: 5
+      TrackingTableCompletionMaxRead: 50
+      TrackingTableCompletionMinWrite: 5
+      TrackingTableCompletionMaxWrite: 50
+      TrackingTableExecutionMinRead: 2
+      TrackingTableExecutionMaxRead: 50
+      TrackingTableExecutionMinWrite: 2
+      TrackingTableExecutionMaxWrite: 50
+      ConcurrencyTableMinRead: 2
+      ConcurrencyTableMaxRead: 50
+      ConcurrencyTableMinWrite: 2
+      ConcurrencyTableMaxWrite: 50
+      ConfigurationTableMinRead: 2
+      ConfigurationTableMaxRead: 10
+      ConfigurationTableMinWrite: 1
+      ConfigurationTableMaxWrite: 5
+      LastExecutionRead: 1
+      LastExecutionWrite: 1
 Resources:
   SchedulerRole:
     Type: AWS::IAM::Role
@@ -165,6 +245,14 @@ Resources:
                 Resource: !Sub
                   - arn:${AWS::Partition}:s3:::${Name}/*
                   - Name: !Ref 'Configuration'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:GetObject
+                Resource: !Sub
+                  - arn:${AWS::Partition}:s3:::${Name}/*
+                  - Name: !Ref 'TaskResources'
               - Effect: Allow
                 Action:
                   - s3:ListBucket
@@ -292,10 +380,93 @@ Resources:
                   - sts:AssumeRole
                 Resource:
                   - '*'
+              - Action:
+                  - ec2:CopySnapshot
+                  - ec2:CreateTags
+                Resource: '*'
+                Effect: Allow
+                Sid: Ec2CopySnapshote9bd4a2e66554500817f7953f2602aa3
+              - Action:
+                  - redshift:DescribeClusterSnapshots
+                  - redshift:DeleteClusterSnapshot
+                  - redshift:RevokeSnapshotAccess
+                Resource: '*'
+                Effect: Allow
+                Sid: RedshiftDeleteSnapshot6a6fb8cb41574ef2a85727dfcb4dae37
+              - Action:
+                  - ec2:DescribeSnapshots
+                  - ec2:DeleteSnapshot
+                Resource: '*'
+                Effect: Allow
+                Sid: Ec2DeleteSnapshot0fb0bd78c13147e5bfc89de7e79644ea
+              - Action:
+                  - redshift:DescribeClusters
+                  - redshift:CreateClusterSnapshot
+                  - redshift:DescribeTags
+                  - redshift:AuthorizeSnapshotAccess
+                Resource: '*'
+                Effect: Allow
+                Sid: RedshiftCreateSnapshot88ad775071d34b189b96b9e1b27ea28d
+              - Action:
+                  - dynamodb:Scan
+                  - dynamodb:BatchWriteItem
+                Resource: '*'
+                Effect: Allow
+                Sid: SchedulerTaskCleanup5a8f125d2f2b42bdaf10dd1f7afd501d
+              - Action:
+                  - dynamodb:Scan
+                  - s3:PutObject
+                Resource: '*'
+                Effect: Allow
+                Sid: SchedulerConfigBackup19f297df1fb44406bb23b9fcebe61edd
+              - Action:
+                  - ec2:CreateSnapshot
+                  - ec2:DescribeTags
+                  - ec2:DescribeInstances
+                  - ec2:DescribeSnapshots
+                  - ec2:CreateTags
+                Resource: '*'
+                Effect: Allow
+                Sid: Ec2CreateSnapshotb6dba9f842864a2fb946eb423a1e111f
+              - Action:
+                  - dynamodb:DescribeTable
+                  - dynamodb:UpdateTable
+                Resource: '*'
+                Effect: Allow
+                Sid: DynamodbSetCapacity6abf7581ed8845e99b5887e10763e57b
       ManagedPolicyArns:
         - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole'
         - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
       Path: /
+  OpsAutomatorScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: application-autoscaling.amazonaws.com
+              AWS: !GetAtt 'SchedulerRole.Arn'
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: OpsAutomatorScalingRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeTable
+                  - dynamodb:UpdateTable
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:SetAlarmState
+                  - cloudwatch:DeleteAlarms
+                Resource: '*'
+      Path: /
+    DependsOn:
+      - SchedulerRule
   LastSchedulerExecutionTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -322,6 +493,74 @@ Resources:
         WriteCapacityUnits: 2
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
+  ConfigurationTableAutoScalingReadTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - ConfigurationTableMaxRead
+      MinCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - ConfigurationTableMinRead
+      ResourceId: !Join
+        - /
+        - - table
+          - !Ref 'ConfigurationTable'
+      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      ServiceNamespace: dynamodb
+  ConfigurationTableAutoScalingReadPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - ConfigurationTableAutoScalingReadPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'ConfigurationTableAutoScalingReadTarget'
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 75.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+  ConfigurationTableAutoScalingWriteTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - ConfigurationTableMaxWrite
+      MinCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - ConfigurationTableMinWrite
+      ResourceId: !Join
+        - /
+        - - table
+          - !Ref 'ConfigurationTable'
+      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      ServiceNamespace: dynamodb
+  ConfigurationTableAutoScalingWritePolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - ConfigurationTableAutoScalingWritePolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'ConfigurationTableAutoScalingWriteTarget'
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 75.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+    DependsOn:
+      - ConfigurationTableAutoScalingReadPolicy
   TaskTrackingTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -336,8 +575,8 @@ Resources:
         - AttributeName: Id
           KeyType: HASH
       ProvisionedThroughput:
-        ReadCapacityUnits: 5
-        WriteCapacityUnits: 5
+        ReadCapacityUnits: 10
+        WriteCapacityUnits: 10
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
       GlobalSecondaryIndexes:
@@ -363,6 +602,224 @@ Resources:
           ProvisionedThroughput:
             ReadCapacityUnits: '2'
             WriteCapacityUnits: '2'
+  TaskTrackingTableAutoScalingReadTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableMaxRead
+      MinCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableMinRead
+      ResourceId: !Join
+        - /
+        - - table
+          - !Ref 'TaskTrackingTable'
+      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      ServiceNamespace: dynamodb
+  TaskTrackingTableAutoScalingReadPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - TaskTrackingTableAutoScalingReadPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'TaskTrackingTableAutoScalingReadTarget'
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 75.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+    DependsOn:
+      - ConfigurationTableAutoScalingWritePolicy
+  TaskTrackingTableAutoScalingWriteTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableMaxWrite
+      MinCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableMinWrite
+      ResourceId: !Join
+        - /
+        - - table
+          - !Ref 'TaskTrackingTable'
+      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      ServiceNamespace: dynamodb
+  TaskTrackingTableAutoScalingWritePolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - TaskTrackingTableAutoScalingWritePolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'TaskTrackingTableAutoScalingWriteTarget'
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 75.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+    DependsOn:
+      - TaskTrackingTableAutoScalingReadPolicy
+  TaskTrackingTableCompletionIndexReadTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableCompletionMaxRead
+      MinCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableCompletionMinRead
+      ResourceId: !Join
+        - /
+        - - table
+          - !Ref 'TaskTrackingTable'
+          - index
+          - WaitForCompletionTasks
+      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
+      ScalableDimension: dynamodb:index:ReadCapacityUnits
+      ServiceNamespace: dynamodb
+  TaskTrackingTableCompletionIndexReadPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - TaskTrackingTableCompletionIndexReadPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'TaskTrackingTableCompletionIndexReadTarget'
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 75.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+    DependsOn:
+      - TaskTrackingTableAutoScalingWritePolicy
+  TaskTrackingTableCompletionIndexWriteTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableCompletionMaxWrite
+      MinCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableCompletionMinWrite
+      ResourceId: !Join
+        - /
+        - - table
+          - !Ref 'TaskTrackingTable'
+          - index
+          - WaitForCompletionTasks
+      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
+      ScalableDimension: dynamodb:index:WriteCapacityUnits
+      ServiceNamespace: dynamodb
+  TaskTrackingTableCompletionIndexWritePolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - TaskTrackingTableCompletionIndexWritePolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'TaskTrackingTableCompletionIndexWriteTarget'
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 75.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+    DependsOn:
+      - TaskTrackingTableCompletionIndexReadPolicy
+  TaskTrackingTableExecutionIndexReadTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableExecutionMaxRead
+      MinCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableExecutionMinRead
+      ResourceId: !Join
+        - /
+        - - table
+          - !Ref 'TaskTrackingTable'
+          - index
+          - WaitForExecutionTasks
+      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
+      ScalableDimension: dynamodb:index:ReadCapacityUnits
+      ServiceNamespace: dynamodb
+  TaskTrackingTableExecutionIndexReadPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - TaskTrackingTableExecutionIndexReadPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'TaskTrackingTableExecutionIndexReadTarget'
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 75.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+    DependsOn:
+      - TaskTrackingTableCompletionIndexWritePolicy
+  TaskTrackingTableExecutionIndexWriteTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableExecutionMaxWrite
+      MinCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - TrackingTableExecutionMinWrite
+      ResourceId: !Join
+        - /
+        - - table
+          - !Ref 'TaskTrackingTable'
+          - index
+          - WaitForExecutionTasks
+      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
+      ScalableDimension: dynamodb:index:WriteCapacityUnits
+      ServiceNamespace: dynamodb
+  TaskTrackingTableExecutionIndexWritePolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - TaskTrackingTableExecutionIndexWritePolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'TaskTrackingTableExecutionIndexWriteTarget'
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 75.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+    DependsOn:
+      - TaskTrackingTableExecutionIndexReadPolicy
   ConcurrencyTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -375,6 +832,76 @@ Resources:
       ProvisionedThroughput:
         ReadCapacityUnits: 2
         WriteCapacityUnits: 2
+  ConcurrencyTableAutoScalingReadTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - ConcurrencyTableMaxRead
+      MinCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - ConcurrencyTableMinRead
+      ResourceId: !Join
+        - /
+        - - table
+          - !Ref 'ConcurrencyTable'
+      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      ServiceNamespace: dynamodb
+  ConcurrencyTableAutoScalingReadPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - ConcurrencyTableAutoScalingReadPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'ConcurrencyTableAutoScalingReadTarget'
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 75.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+    DependsOn:
+      - TaskTrackingTableExecutionIndexWritePolicy
+  ConcurrencyTableAutoScalingWriteTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - ConcurrencyTableMaxWrite
+      MinCapacity: !FindInMap
+        - Settings
+        - DynamoDbTableCapacities
+        - ConcurrencyTableMinWrite
+      ResourceId: !Join
+        - /
+        - - table
+          - !Ref 'ConcurrencyTable'
+      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      ServiceNamespace: dynamodb
+  ConcurrencyTableAutoScalingWritePolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - ConcurrencyTableAutoScalingWritePolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'ConcurrencyTableAutoScalingWriteTarget'
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 75.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+    DependsOn:
+      - ConcurrencyTableAutoScalingReadPolicy
   SchedulerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -403,6 +930,11 @@ Resources:
       Environment:
         Variables:
           LAST_SCHEDULER_RUN_TABLE: !Ref 'LastSchedulerExecutionTable'
+          RESOURCE_BUCKET: !Ref 'TaskResources'
+          RESOURCE_TO_S3_SIZE: !FindInMap
+            - Settings
+            - Resources
+            - ResourceToS3SizeKB
           ACTION_TRACKING_TABLE: !Ref 'TaskTrackingTable'
           CONFIG_TABLE: !Ref 'ConfigurationTable'
           CONFIG_BUCKET: !Ref 'Configuration'
@@ -424,11 +956,20 @@ Resources:
             - Settings
             - Metrics
             - Url
-      MemorySize: 128
+      MemorySize: !Ref 'LambdaSize'
       Timeout: '300'
       Description: Task scheduler (default), version %version%
     DependsOn:
       - SchedulerRole
+  TaskResources:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+  OpsAutomatorInvokePermissionDynamodb:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt 'SchedulerDefault.Arn'
+      Action: lambda:InvokeFunction
+      Principal: dynamodb.amazonaws.com
   Configuration:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain

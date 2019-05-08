@@ -19,7 +19,7 @@ import handlers
 from util import safe_dict, safe_json
 from util.logger import Logger
 
-MSG_REQUEST_HANLED = "Request handler {} completed in {:>.3f} seconds"
+MSG_REQUEST_HANDLED = "Request handler {} completed in {:>.3f} seconds"
 MSG_ERR_HANDLING_REQUEST = "Error handling request {} by handler {}: ({})\n{}"
 MSG_NO_REQUEST_HANDLER = "Request was not handled, no handler was able to handle this type of request {}"
 
@@ -41,7 +41,7 @@ def lambda_handler(event, context):
                 logger.info("Handler is {}", handler_name)
                 try:
                     result = handler.handle_request()
-                    logger.info(MSG_REQUEST_HANLED, handler_name, (datetime.utcnow() - dt).total_seconds())
+                    logger.info(MSG_REQUEST_HANDLED, handler_name, (datetime.utcnow() - dt).total_seconds())
                     return safe_dict(result)
                 except Exception as e:
                     logger.error(MSG_ERR_HANDLING_REQUEST, safe_json(event, indent=2), handler_name, e, traceback.format_exc())

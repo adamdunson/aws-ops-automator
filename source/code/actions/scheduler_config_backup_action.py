@@ -44,7 +44,7 @@ class SchedulerConfigBackupAction:
 
         ACTION_TITLE: "Scheduler Config Backup",
         ACTION_VERSION: "1.0",
-        ACTION_DESCRIPION: "Creates a daily backup of configuration table",
+        ACTION_DESCRIPTION: "Creates a daily backup of configuration table",
         ACTION_AUTHOR: "AWS",
         ACTION_ID: "afcfa6ee-ec48-4506-84cb-b4c2bcc9217c",
 
@@ -121,7 +121,8 @@ class SchedulerConfigBackupAction:
 
         # create name of object in s3
         dt = datetime.now()
-        backup_object_key = BACKUP_OBJECT_KEY_TEMPLATE.format(self.S3Prefix, dt.year, dt.month, dt.day, dt.hour,dt.minute, dt.second)
+        backup_object_key = BACKUP_OBJECT_KEY_TEMPLATE.format(self.S3Prefix, dt.year, dt.month, dt.day, dt.hour, dt.minute,
+                                                              dt.second)
 
         backup_data = json.dumps(backup_config_items, indent=3)
         resp = s3_client.put_object_with_retries(Body=backup_data, Bucket=self.S3Bucket, Key=backup_object_key)
