@@ -221,7 +221,7 @@ def main(template_file, version, bucket):
     add_actions_permissions(template, all_actions)
     add_additional_lambda_functions(template, all_actions)
     add_action_stack_resources(template, all_actions)
-    yaml.dump(template, sys.stdout)
+    print(yaml.dump(template, sys.stdout))
 
 
 main(template_file=sys.argv[1], version=sys.argv[2], bucket=sys.argv[3])

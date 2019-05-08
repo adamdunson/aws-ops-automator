@@ -1,5 +1,65 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Ops Automator, template version %version%, (SO0029)
+Mappings:
+  Send:
+    AnonymousUsage:
+      Data: 'Yes'
+  Settings:
+    Names:
+      CloudTrailRdsEventRule: OpsAutomatorCloudTrailRdsEventRule
+      CloudWatchQueueHandlerLambdaFunction: OpsAutomatorCloudWatchQueueHandler
+      ConfigurationBucket: ''
+      EbsSnapshotEventRule: OpsAutomatorEbsSnapshotEventRule
+      Ec2StateEventRule: OpsAutomatorEc2StateEventRule
+      EventsTopic: EventsTopic
+      EventsTopicDisplayName: OpsAutomatorEvents
+      IssuesTopic: IssuesTopic
+      IssuesTopicDisplayName: Issues
+      LogQueueName: OpsAutomatorCloudWatchLogQueue
+      NotificationsTopic: NotificationsTopic
+      NotificationsTopicDisplayName: Notifications
+      OpsAutomatorCompletionRule: OpsAutomatorCompletionRule
+      OpsAutomatorLambdaFunction: OpsAutomator
+      OpsAutomatorRule: OpsAutomatorRule
+      ReportingBucket: ''
+      ResourcesBucket: ''
+      TaggingEventRule: OpsAutomatorTaggingEventRule
+    Metrics:
+      Url: https://metrics.awssolutionsbuilder.com/generic
+      SolutionId: S00029
+    Templates:
+      OptimizeCrossAccountTemplate: 'True'
+    ActionMemory:
+      Standard: '128'
+      Medium: '256'
+      Large: '512'
+      XLarge: '1024'
+      XXLarge: '2048'
+      XXXLarge: '3008'
+      ECS: ''
+    EcsCluster:
+      ClusterName: ''
+    Resources:
+      ResourceToS3SizeKB: 16
+      EncryptResourceData: 'False'
+    ServiceLimits:
+      MaxConcurrentEbsSnapshotCopies: 5
+      MaxConcurrentRdsSnapshotCopies: 5
+      MaxConcurrentImageCopies: 25
+    CloudWatchApiLimits:
+      MaxPutCallsPerStream: 5
+      MaxDescribeCalls: 5
+      MaxApiCalls: 40
+  EnabledDisabled:
+    'Yes':
+      Value: ENABLED
+    'No':
+      Value: DISABLED
+  YesNoBoolean:
+    'Yes':
+      Value: 'True'
+    'No':
+      Value: 'False'
 Parameters:
   TagName:
     Type: String
@@ -15,6 +75,13 @@ Parameters:
       - 'No'
     Default: 'Yes'
     Description: Enable cleanup of task tracking table.
+  EnableTaskExport:
+    Type: String
+    AllowedValues:
+      - 'Yes'
+      - 'No'
+    Default: 'No'
+    Description: Enable S3 export of task tracking table.
   RetainFailedTasks:
     Type: String
     AllowedValues:
@@ -22,18 +89,19 @@ Parameters:
       - 'No'
     Default: 'Yes'
     Description: Do not delete failed tasks.
-  SendAnonymousData:
+  UseCloudWatchMetrics:
     Type: String
     AllowedValues:
       - 'Yes'
       - 'No'
     Default: 'Yes'
-    Description: Send Anonymous Metrics Data.
+    Description: Collect CloudWatch metrics data for Ops Automator. Detailed metrics
+      for individual tasks can be configured at task level.
   TaskRetentionHours:
     Type: Number
     MinValue: 1
     Default: 168
-    Description: Number of hours after which tasks are deleted..
+    Description: Number of hours after which tasks are deleted.
   LogRetentionDays:
     Type: Number
     Default: 30
@@ -55,64 +123,12 @@ Parameters:
       - 731
       - 1827
       - 3653
-    Description: Retention days for scheduler logs.
-  LambdaSize:
-    Type: Number
-    Description: Lambda function size, increment size when processing large amounts
-      of resources
-    Default: 128
-    AllowedValues:
-      - 128
-      - 192
-      - 256
-      - 320
-      - 384
-      - 448
-      - 512
-      - 576
-      - 640
-      - 704
-      - 768
-      - 832
-      - 896
-      - 960
-      - 1024
-      - 1088
-      - 1152
-      - 1216
-      - 1280
-      - 1344
-      - 1408
-      - 1472
-      - 1536
-      - 1600
-      - 1664
-      - 1728
-      - 1792
-      - 1856
-      - 1920
-      - 1984
-      - 2048
-      - 2112
-      - 2176
-      - 2240
-      - 2304
-      - 2368
-      - 2432
-      - 2496
-      - 2560
-      - 2624
-      - 2688
-      - 2752
-      - 2816
-      - 2880
-      - 2944
-      - 3008
+    Description: Retention days for Ops Automator logs.
   ConfigBackupDays:
     Type: Number
     Default: 30
     MinValue: 1
-    Description: Retention days for scheduler configuration backups.
+    Description: Retention days for Ops Automator configuration backups.
   SchedulerActive:
     Type: String
     AllowedValues:
@@ -127,80 +143,204 @@ Metadata:
           default: Ops Automator (version %version%)
         Parameters:
           - TagName
+          - UseCloudWatchMetrics
+          - SchedulerActive
       - Label:
           default: Maintenance
         Parameters:
           - EnableTaskCleanup
-          - RetainFailedTasks
-          - SchedulerActive
+          - EnableTaskExport
           - TaskRetentionHours
-          - LambdaSize
+          - RetainFailedTasks
+          - LogRetentionDays
+          - ConfigBackupDays
     ParameterLabels:
       EnableTaskCleanup:
         default: Cleanup Task Tracking Table
+      EnableTaskExport:
+        default: Export Task Tracking Table to Amazon S3
       RetainFailedTasks:
         default: Keep failed tasks
       SchedulerActive:
         default: Scheduling active
       TagName:
-        default: Ops Automator Tagname
+        default: TaskScheduler Tagname
       TaskRetentionHours:
         default: Hours to keep tasks
       ConfigBackupDays:
         default: Days to keep configuration backups
-      LambdaSize:
-        default: Lambda size (MB)
-      SendAnonymousData:
-        default: Send anonymous usage data
+      UseCloudWatchMetrics:
+        default: Enable CloudWatch Metrics
 Conditions:
+  CustomConfigBucketName: !Not
+    - !Equals
+      - !FindInMap
+        - Settings
+        - Names
+        - ConfigurationBucket
+      - ''
+  CustomReportingBucketName: !Not
+    - !Equals
+      - !FindInMap
+        - Settings
+        - Names
+        - ReportingBucket
+      - ''
+  CustomResourcesBucketName: !Not
+    - !Equals
+      - !FindInMap
+        - Settings
+        - Names
+        - ResourcesBucket
+      - ''
   EnableTaskCleanupCondition: !Equals
     - !Ref 'EnableTaskCleanup'
+    - 'Yes'
+  EnableTaskExportCondition: !Equals
+    - !Ref 'EnableTaskExport'
     - 'Yes'
   KeepFailedTasksCondition: !Equals
     - !Ref 'RetainFailedTasks'
     - 'Yes'
-Mappings:
-  EnabledDisabled:
-    'Yes':
-      Value: ENABLED
-    'No':
-      Value: DISABLED
-  YesNoBoolean:
-    'Yes':
-      Value: 'True'
-    'No':
-      Value: 'False'
-  Settings:
-    Metrics:
-      Url: https://metrics.awssolutionsbuilder.com/generic
-      SolutionId: S00029
-    Resources:
-      ResourceToS3SizeKB: 16
-    DynamoDbTableCapacities:
-      TrackingTableMinRead: 5
-      TrackingTableMaxRead: 100
-      TrackingTableMinWrite: 5
-      TrackingTableMaxWrite: 100
-      TrackingTableCompletionMinRead: 5
-      TrackingTableCompletionMaxRead: 50
-      TrackingTableCompletionMinWrite: 5
-      TrackingTableCompletionMaxWrite: 50
-      TrackingTableExecutionMinRead: 2
-      TrackingTableExecutionMaxRead: 50
-      TrackingTableExecutionMinWrite: 2
-      TrackingTableExecutionMaxWrite: 50
-      ConcurrencyTableMinRead: 2
-      ConcurrencyTableMaxRead: 50
-      ConcurrencyTableMinWrite: 2
-      ConcurrencyTableMaxWrite: 50
-      ConfigurationTableMinRead: 2
-      ConfigurationTableMaxRead: 10
-      ConfigurationTableMinWrite: 1
-      ConfigurationTableMaxWrite: 5
-      LastExecutionRead: 1
-      LastExecutionWrite: 1
+  EncryptResourceData: !Equals
+    - !FindInMap
+      - Settings
+      - Resources
+      - EncryptResourceData
+    - 'True'
+  UseEcs: !Not
+    - !Equals
+      - !FindInMap
+        - Settings
+        - EcsCluster
+        - ClusterName
+      - ''
+  CloudWatchPutLimit800: !Or
+    - !Equals
+      - !Ref 'AWS::Region'
+      - ap-south-1
+    - !Equals
+      - !Ref 'AWS::Region'
+      - ap-northeast-1
+    - !Equals
+      - !Ref 'AWS::Region'
+      - ap-northeast-2
+    - !Equals
+      - !Ref 'AWS::Region'
+      - ap-southeast-1
+    - !Equals
+      - !Ref 'AWS::Region'
+      - ap-southeast-2
+    - !Equals
+      - !Ref 'AWS::Region'
+      - eu-central-1
+    - !Equals
+      - !Ref 'AWS::Region'
+      - eu-west-2
+    - !Equals
+      - !Ref 'AWS::Region'
+      - sa-east-1
+    - !Equals
+      - !Ref 'AWS::Region'
+      - us-east-2
+    - !Equals
+      - !Ref 'AWS::Region'
+      - us-west-1
+    - !Equals
+      - !Ref 'AWS::Region'
+      - us-gov-west-1
+  FifoQueue: !Or
+    - !Equals
+      - !Ref 'AWS::Region'
+      - eu-west-1
+    - !Equals
+      - !Ref 'AWS::Region'
+      - ap-northeast-1
+    - !Equals
+      - !Ref 'AWS::Region'
+      - ap-southeast-2
+    - !Equals
+      - !Ref 'AWS::Region'
+      - us-east-1
+    - !Equals
+      - !Ref 'AWS::Region'
+      - us-east-2
+    - !Equals
+      - !Ref 'AWS::Region'
+      - us-west-2
+    - !Equals
+      - !Ref 'AWS::Region'
+      - us-gov-west-1
+  NoFifoQueue: !Not
+    - !Condition 'FifoQueue'
 Resources:
-  SchedulerRole:
+  OpsAutomatorEventsForwardRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: OpsAutomatorEventForwardRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref 'OpsAutomatorEventsTopic'
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Path: /
+  OpsAutomatorCloudWatchLogHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: OpsAutomatorCloudWatchHandlerRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:DescribeStream
+                  - dynamodb:ListStreams
+                Resource:
+                  - !GetAtt 'TriggerTable.StreamArn'
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource:
+                  - !Join
+                    - ''
+                    - - !Join
+                        - ':'
+                        - - !Sub arn:${AWS::Partition}:dynamodb
+                          - !Ref 'AWS::Region'
+                          - !Ref 'AWS::AccountId'
+                          - table/
+                      - !Ref 'TriggerTable'
+              - Effect: Allow
+                Action:
+                  - logs:DescribeLogStreams
+                Resource:
+                  - '*'
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Path: /
+  OpsAutomatorLambdaRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -218,13 +358,19 @@ Resources:
             Principal:
               Service: events.amazonaws.com
             Action: sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
       Policies:
-        - PolicyName: SchedulerPolicy
+        - PolicyName: OpsAutomatorLambdaRolePolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
+                  - logs:DescribeLogGroups
                   - logs:DescribeLogStreams
                   - logs:PutRetentionPolicy
                 Resource:
@@ -234,25 +380,39 @@ Resources:
                 Resource:
                   - '*'
               - Effect: Allow
-                Action: sns:Publish
+                Action: tag:GetResources
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - sns:Publish
                 Resource:
-                  - !Ref 'SchedulerSnsTopic'
+                  - !Ref 'OpsAutomatorIssuesTopic'
+                  - !Ref 'OpsAutomatorNotificationsTopic'
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                  - sns:RemovePermission
+                  - sns:AddPermission
+                  - sns:GetTopicAttributes
+                  - sns:Subscribe
+                Resource:
+                  - !Ref 'OpsAutomatorEventsTopic'
               - Effect: Allow
                 Action:
                   - s3:PutObject
                   - s3:DeleteObject
                   - s3:GetObject
-                Resource: !Sub
-                  - arn:${AWS::Partition}:s3:::${Name}/*
-                  - Name: !Ref 'Configuration'
+                Resource:
+                  - !Sub
+                    - arn:${AWS::Partition}:s3:::${Name}/*
+                    - Name: !Ref 'TaskResources'
               - Effect: Allow
                 Action:
                   - s3:PutObject
-                  - s3:DeleteObject
-                  - s3:GetObject
-                Resource: !Sub
-                  - arn:${AWS::Partition}:s3:::${Name}/*
-                  - Name: !Ref 'TaskResources'
+                Resource:
+                  - !Sub
+                    - arn:${AWS::Partition}:s3:::${Name}/*
+                    - Name: !Ref 'Reporting'
               - Effect: Allow
                 Action:
                   - s3:ListBucket
@@ -269,23 +429,16 @@ Resources:
                     - ''
                     - - !Join
                         - ':'
-                        - - !Sub 'arn:${AWS::Partition}:dynamodb'
+                        - - !Sub arn:${AWS::Partition}:dynamodb
                           - !Ref 'AWS::Region'
                           - !Ref 'AWS::AccountId'
                           - table/
                       - !Ref 'TaskTrackingTable'
-              - Effect: Allow
-                Action:
-                  - dynamodb:UpdateItem
-                  - dynamodb:GetItem
-                  - dynamodb:BatchWriteItem
-                  - dynamodb:Query
-                Resource:
                   - !Join
                     - ''
                     - - !Join
                         - ':'
-                        - - !Sub 'arn:${AWS::Partition}:dynamodb'
+                        - - !Sub arn:${AWS::Partition}:dynamodb
                           - !Ref 'AWS::Region'
                           - !Ref 'AWS::AccountId'
                           - table/
@@ -303,22 +456,23 @@ Resources:
                     - ''
                     - - !Join
                         - ':'
-                        - - !Sub 'arn:${AWS::Partition}:dynamodb'
+                        - - !Sub arn:${AWS::Partition}:dynamodb
                           - !Ref 'AWS::Region'
                           - !Ref 'AWS::AccountId'
                           - table/
                       - !Ref 'ConfigurationTable'
-              - Sid: ConcurrencyTableAcces
+              - Sid: ConcurrencyTableAccess
                 Effect: Allow
                 Action:
                   - dynamodb:UpdateItem
+                  - dynamodb:GetItem
                   - dynamodb:DeleteItem
                 Resource:
                   - !Join
                     - ''
                     - - !Join
                         - ':'
-                        - - !Sub 'arn:${AWS::Partition}:dynamodb'
+                        - - !Sub arn:${AWS::Partition}:dynamodb
                           - !Ref 'AWS::Region'
                           - !Ref 'AWS::AccountId'
                           - table/
@@ -332,22 +486,58 @@ Resources:
                     - ''
                     - - !Join
                         - ':'
-                        - - !Sub 'arn:${AWS::Partition}:dynamodb'
+                        - - !Sub arn:${AWS::Partition}:dynamodb
                           - !Ref 'AWS::Region'
                           - !Ref 'AWS::AccountId'
                           - table/
                       - !Ref 'LastSchedulerExecutionTable'
               - Effect: Allow
                 Action:
-                  - events:EnableRule
-                  - events:DisableRule
-                  - events:PutRule
+                  - dynamodb:PutItem
                 Resource:
-                  - !Sub 'arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/${AWS::StackName}-SchedulerRule*'
-                  - !Sub 'arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/${AWS::StackName}-CompletionRule*'
+                  - !Join
+                    - ''
+                    - - !Join
+                        - ':'
+                        - - !Sub arn:${AWS::Partition}:dynamodb
+                          - !Ref 'AWS::Region'
+                          - !Ref 'AWS::AccountId'
+                          - table/
+                      - !Ref 'TriggerTable'
               - Effect: Allow
                 Action:
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:DescribeStream
+                  - dynamodb:ListStreams
+                Resource:
+                  - !GetAtt 'TaskTrackingTable.StreamArn'
+              - Effect: Allow
+                Action:
+                  - events:EnableRule
+                  - events:DisableRule
+                Resource:
+                  - !Sub
+                    - arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/${AWS::StackName}-${Rule}
+                    - Rule: !FindInMap
+                        - Settings
+                        - Names
+                        - OpsAutomatorRule
+                  - !Sub
+                    - arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/${AWS::StackName}-${Rule}
+                    - Rule: !FindInMap
+                        - Settings
+                        - Names
+                        - OpsAutomatorCompletionRule
+              - Effect: Allow
+                Action:
+                  - events:PutRule
                   - events:ListRules
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
                 Resource:
                   - '*'
               - Effect: Allow
@@ -357,116 +547,255 @@ Resources:
                   - !Ref 'AWS::StackId'
               - Effect: Allow
                 Action:
+                  - pricing:GetAttributeValues
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - cloudformation:GetTemplate
+                  - cloudformation:ListStackResources
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*'
+              - Effect: Allow
+                Action:
                   - cloudformation:DeleteStack
                 Resource:
                   - '*'
               - Effect: Allow
                 Action:
                   - lambda:InvokeFunction
+                  - lambda:GetFunction
                 Resource:
                   - !Join
                     - ':'
-                    - - !Sub 'arn:${AWS::Partition}:lambda'
+                    - - !Sub arn:${AWS::Partition}:lambda
                       - !Ref 'AWS::Region'
                       - !Ref 'AWS::AccountId'
                       - function
                       - !Join
                         - '-'
                         - - !Ref 'AWS::StackName'
-                          - SchedulerDefault
-                Sid: SchedulerInvoke
+                          - !FindInMap
+                            - Settings
+                            - Names
+                            - OpsAutomatorLambdaFunction
+                          - Standard
+                  - !Join
+                    - ':'
+                    - - !Sub arn:${AWS::Partition}:lambda
+                      - !Ref 'AWS::Region'
+                      - !Ref 'AWS::AccountId'
+                      - function
+                      - !Join
+                        - '-'
+                        - - !Ref 'AWS::StackName'
+                          - !FindInMap
+                            - Settings
+                            - Names
+                            - OpsAutomatorLambdaFunction
+                          - Medium
+                  - !Join
+                    - ':'
+                    - - !Sub arn:${AWS::Partition}:lambda
+                      - !Ref 'AWS::Region'
+                      - !Ref 'AWS::AccountId'
+                      - function
+                      - !Join
+                        - '-'
+                        - - !Ref 'AWS::StackName'
+                          - !FindInMap
+                            - Settings
+                            - Names
+                            - OpsAutomatorLambdaFunction
+                          - Large
+                  - !Join
+                    - ':'
+                    - - !Sub arn:${AWS::Partition}:lambda
+                      - !Ref 'AWS::Region'
+                      - !Ref 'AWS::AccountId'
+                      - function
+                      - !Join
+                        - '-'
+                        - - !Ref 'AWS::StackName'
+                          - !FindInMap
+                            - Settings
+                            - Names
+                            - OpsAutomatorLambdaFunction
+                          - XLarge
+                  - !Join
+                    - ':'
+                    - - !Sub arn:${AWS::Partition}:lambda
+                      - !Ref 'AWS::Region'
+                      - !Ref 'AWS::AccountId'
+                      - function
+                      - !Join
+                        - '-'
+                        - - !Ref 'AWS::StackName'
+                          - !FindInMap
+                            - Settings
+                            - Names
+                            - OpsAutomatorLambdaFunction
+                          - XXLarge
+                  - !Join
+                    - ':'
+                    - - !Sub arn:${AWS::Partition}:lambda
+                      - !Ref 'AWS::Region'
+                      - !Ref 'AWS::AccountId'
+                      - function
+                      - !Join
+                        - '-'
+                        - - !Ref 'AWS::StackName'
+                          - !FindInMap
+                            - Settings
+                            - Names
+                            - OpsAutomatorLambdaFunction
+                          - XXXLarge
+                Sid: OpsAutomatorLambdaInvoke
               - Effect: Allow
                 Action:
                   - sts:AssumeRole
+                  - iam:PassRole
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${AWS::StackName}-ops-automator-task:*'
+              - Effect: Allow
+                Sid: Ec2ArchiveSnapshot
+                Action:
+                  - ec2:RunInstances
+                  - ec2:TerminateInstance
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeImages
+                  - ec2:DescribeInternetGateways
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcEndpoints
+                  - ec2:DescribeRouteTables
+                  - ec2:DescribeNatGateways
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
                 Resource:
                   - '*'
               - Action:
-                  - ec2:CopySnapshot
-                  - ec2:CreateTags
-                Resource: '*'
-                Effect: Allow
-                Sid: Ec2CopySnapshote9bd4a2e66554500817f7953f2602aa3
-              - Action:
-                  - redshift:DescribeClusterSnapshots
-                  - redshift:DeleteClusterSnapshot
-                  - redshift:RevokeSnapshotAccess
-                Resource: '*'
-                Effect: Allow
-                Sid: RedshiftDeleteSnapshot6a6fb8cb41574ef2a85727dfcb4dae37
-              - Action:
-                  - ec2:DescribeSnapshots
-                  - ec2:DeleteSnapshot
-                Resource: '*'
-                Effect: Allow
-                Sid: Ec2DeleteSnapshot0fb0bd78c13147e5bfc89de7e79644ea
-              - Action:
-                  - redshift:DescribeClusters
-                  - redshift:CreateClusterSnapshot
-                  - redshift:DescribeTags
-                  - redshift:AuthorizeSnapshotAccess
-                Resource: '*'
-                Effect: Allow
-                Sid: RedshiftCreateSnapshot88ad775071d34b189b96b9e1b27ea28d
-              - Action:
-                  - dynamodb:Scan
+                  - None:None
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStacks
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:UpdateStack
+                  - cloudwatch:GetMetricData
                   - dynamodb:BatchWriteItem
-                Resource: '*'
-                Effect: Allow
-                Sid: SchedulerTaskCleanup5a8f125d2f2b42bdaf10dd1f7afd501d
-              - Action:
+                  - dynamodb:CreateBackup
+                  - dynamodb:DeleteBackup
+                  - dynamodb:DescribeBackup
+                  - dynamodb:DescribeTable
+                  - dynamodb:ListBackups
+                  - dynamodb:ListTables
+                  - dynamodb:ListTagsOfResource
                   - dynamodb:Scan
-                  - s3:PutObject
-                Resource: '*'
-                Effect: Allow
-                Sid: SchedulerConfigBackup19f297df1fb44406bb23b9fcebe61edd
-              - Action:
+                  - dynamodb:TagResource
+                  - dynamodb:UntagResource
+                  - dynamodb:UpdateTable
+                  - ec2:CopyImage
+                  - ec2:CopySnapshot
+                  - ec2:CreateImage
                   - ec2:CreateSnapshot
-                  - ec2:DescribeTags
+                  - ec2:CreateTags
+                  - ec2:DeleteSnapshot
+                  - ec2:DeleteTags
+                  - ec2:DeregisterImage
+                  - ec2:DescribeAddresses
+                  - ec2:DescribeImages
+                  - ec2:DescribeInstanceAttribute
+                  - ec2:DescribeInstanceCreditSpecifications
                   - ec2:DescribeInstances
                   - ec2:DescribeSnapshots
-                  - ec2:CreateTags
+                  - ec2:DescribeTags
+                  - ec2:DescribeVolumes
+                  - ec2:ModifyImageAttribute
+                  - ec2:ModifyInstanceAttribute
+                  - ec2:ModifyInstanceCreditSpecification
+                  - ec2:ModifySnapshotAttribute
+                  - ec2:RebootInstances
+                  - ec2:ReleaseAddress
+                  - ec2:RunInstances
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                  - ec2:TerminateInstances
+                  - elasticloadbalancing:DeregisterInstancesFromLoadBalancer
+                  - elasticloadbalancing:DeregisterTargets
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - elasticloadbalancing:DescribeTags
+                  - elasticloadbalancing:DescribeTargetGroupAttributes
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:RegisterInstancesWithLoadBalancer
+                  - elasticloadbalancing:RegisterTargets
+                  - iam:GetRole
+                  - iam:PassRole
+                  - kms:DescribeKey
+                  - rds:AddTagsToResource
+                  - rds:CopyDBClusterSnapshot
+                  - rds:CopyDBSnapshot
+                  - rds:CreateDBClusterSnapshot
+                  - rds:CreateDBSnapshot
+                  - rds:DeleteDBCluster
+                  - rds:DeleteDBClusterSnapshot
+                  - rds:DeleteDBInstance
+                  - rds:DeleteDBSnapshot
+                  - rds:DescribeDBClusterSnapshots
+                  - rds:DescribeDBClusters
+                  - rds:DescribeDBInstances
+                  - rds:DescribeDBSnapshots
+                  - rds:DescribeDbClusterSnapshots
+                  - rds:DescribeDbClusters
+                  - rds:DescribeDbInstances
+                  - rds:DescribeDbSnapshots
+                  - rds:ListTagsForResource
+                  - rds:ModifyDBClusterSnapshotAttribute
+                  - rds:ModifyDBSnapshotAttribute
+                  - rds:ModifyDBsnapshotAttribute
+                  - rds:RebootDBInstance
+                  - rds:RemoveTagsFromResource
+                  - rds:StartDBCluster
+                  - rds:StartDBInstance
+                  - rds:StopDBCluster
+                  - rds:StopDBInstance
+                  - redshift:AuthorizeSnapshotAccess
+                  - redshift:CreateClusterSnapshot
+                  - redshift:CreateTags
+                  - redshift:DeleteClusterSnapshot
+                  - redshift:DeleteTags
+                  - redshift:DescribeClusterSnapshots
+                  - redshift:DescribeClusters
+                  - redshift:DescribeTags
+                  - redshift:RevokeSnapshotAccess
+                  - s3:GetObject
+                  - s3:PutObject
+                  - ssm:GetCommandInvocation
+                  - ssm:SendCommand
+                  - storagegateway:AddTagsToResource
+                  - storagegateway:CreateSnapshot
+                  - storagegateway:ListTagsForResource
+                  - storagegateway:ListVolumes
+                  - storagegateway:RemoveTagsFromResource
+                  - tag:GetResources
                 Resource: '*'
                 Effect: Allow
-                Sid: Ec2CreateSnapshotb6dba9f842864a2fb946eb423a1e111f
-              - Action:
-                  - dynamodb:DescribeTable
-                  - dynamodb:UpdateTable
-                Resource: '*'
-                Effect: Allow
-                Sid: DynamodbSetCapacity6abf7581ed8845e99b5887e10763e57b
+                Sid: ActionPermissions
       ManagedPolicyArns:
-        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole'
-        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Path: /
-  OpsAutomatorScalingRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: application-autoscaling.amazonaws.com
-              AWS: !GetAtt 'SchedulerRole.Arn'
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: OpsAutomatorScalingRolePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - dynamodb:DescribeTable
-                  - dynamodb:UpdateTable
-                  - cloudwatch:PutMetricAlarm
-                  - cloudwatch:DescribeAlarms
-                  - cloudwatch:GetMetricStatistics
-                  - cloudwatch:SetAlarmState
-                  - cloudwatch:DeleteAlarms
-                Resource: '*'
-      Path: /
-    DependsOn:
-      - SchedulerRule
   LastSchedulerExecutionTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -476,9 +805,7 @@ Resources:
       KeySchema:
         - AttributeName: Name
           KeyType: HASH
-      ProvisionedThroughput:
-        ReadCapacityUnits: 1
-        WriteCapacityUnits: 1
+      BillingMode: PAY_PER_REQUEST
   ConfigurationTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -488,79 +815,9 @@ Resources:
       KeySchema:
         - AttributeName: Name
           KeyType: HASH
-      ProvisionedThroughput:
-        ReadCapacityUnits: 5
-        WriteCapacityUnits: 2
+      BillingMode: PAY_PER_REQUEST
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
-  ConfigurationTableAutoScalingReadTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - ConfigurationTableMaxRead
-      MinCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - ConfigurationTableMinRead
-      ResourceId: !Join
-        - /
-        - - table
-          - !Ref 'ConfigurationTable'
-      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
-      ScalableDimension: dynamodb:table:ReadCapacityUnits
-      ServiceNamespace: dynamodb
-  ConfigurationTableAutoScalingReadPolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - ConfigurationTableAutoScalingReadPolicy
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref 'ConfigurationTableAutoScalingReadTarget'
-      TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 75.0
-        ScaleInCooldown: 60
-        ScaleOutCooldown: 60
-        PredefinedMetricSpecification:
-          PredefinedMetricType: DynamoDBReadCapacityUtilization
-  ConfigurationTableAutoScalingWriteTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - ConfigurationTableMaxWrite
-      MinCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - ConfigurationTableMinWrite
-      ResourceId: !Join
-        - /
-        - - table
-          - !Ref 'ConfigurationTable'
-      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
-      ScalableDimension: dynamodb:table:WriteCapacityUnits
-      ServiceNamespace: dynamodb
-  ConfigurationTableAutoScalingWritePolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - ConfigurationTableAutoScalingWritePolicy
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref 'ConfigurationTableAutoScalingWriteTarget'
-      TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 75.0
-        ScaleInCooldown: 60
-        ScaleOutCooldown: 60
-        PredefinedMetricSpecification:
-          PredefinedMetricType: DynamoDBWriteCapacityUtilization
-    DependsOn:
-      - ConfigurationTableAutoScalingReadPolicy
   TaskTrackingTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -574,9 +831,13 @@ Resources:
       KeySchema:
         - AttributeName: Id
           KeyType: HASH
-      ProvisionedThroughput:
-        ReadCapacityUnits: 10
-        WriteCapacityUnits: 10
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: TTL
+        Enabled: !If
+          - EnableTaskCleanupCondition
+          - 'True'
+          - 'False'
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
       GlobalSecondaryIndexes:
@@ -588,9 +849,6 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-          ProvisionedThroughput:
-            ReadCapacityUnits: '2'
-            WriteCapacityUnits: '2'
         - IndexName: WaitForCompletionTasks
           KeySchema:
             - AttributeName: Id
@@ -599,227 +857,6 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-          ProvisionedThroughput:
-            ReadCapacityUnits: '2'
-            WriteCapacityUnits: '2'
-  TaskTrackingTableAutoScalingReadTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableMaxRead
-      MinCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableMinRead
-      ResourceId: !Join
-        - /
-        - - table
-          - !Ref 'TaskTrackingTable'
-      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
-      ScalableDimension: dynamodb:table:ReadCapacityUnits
-      ServiceNamespace: dynamodb
-  TaskTrackingTableAutoScalingReadPolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - TaskTrackingTableAutoScalingReadPolicy
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref 'TaskTrackingTableAutoScalingReadTarget'
-      TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 75.0
-        ScaleInCooldown: 60
-        ScaleOutCooldown: 60
-        PredefinedMetricSpecification:
-          PredefinedMetricType: DynamoDBReadCapacityUtilization
-    DependsOn:
-      - ConfigurationTableAutoScalingWritePolicy
-  TaskTrackingTableAutoScalingWriteTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableMaxWrite
-      MinCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableMinWrite
-      ResourceId: !Join
-        - /
-        - - table
-          - !Ref 'TaskTrackingTable'
-      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
-      ScalableDimension: dynamodb:table:WriteCapacityUnits
-      ServiceNamespace: dynamodb
-  TaskTrackingTableAutoScalingWritePolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - TaskTrackingTableAutoScalingWritePolicy
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref 'TaskTrackingTableAutoScalingWriteTarget'
-      TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 75.0
-        ScaleInCooldown: 60
-        ScaleOutCooldown: 60
-        PredefinedMetricSpecification:
-          PredefinedMetricType: DynamoDBWriteCapacityUtilization
-    DependsOn:
-      - TaskTrackingTableAutoScalingReadPolicy
-  TaskTrackingTableCompletionIndexReadTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableCompletionMaxRead
-      MinCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableCompletionMinRead
-      ResourceId: !Join
-        - /
-        - - table
-          - !Ref 'TaskTrackingTable'
-          - index
-          - WaitForCompletionTasks
-      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
-      ScalableDimension: dynamodb:index:ReadCapacityUnits
-      ServiceNamespace: dynamodb
-  TaskTrackingTableCompletionIndexReadPolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - TaskTrackingTableCompletionIndexReadPolicy
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref 'TaskTrackingTableCompletionIndexReadTarget'
-      TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 75.0
-        ScaleInCooldown: 60
-        ScaleOutCooldown: 60
-        PredefinedMetricSpecification:
-          PredefinedMetricType: DynamoDBReadCapacityUtilization
-    DependsOn:
-      - TaskTrackingTableAutoScalingWritePolicy
-  TaskTrackingTableCompletionIndexWriteTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableCompletionMaxWrite
-      MinCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableCompletionMinWrite
-      ResourceId: !Join
-        - /
-        - - table
-          - !Ref 'TaskTrackingTable'
-          - index
-          - WaitForCompletionTasks
-      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
-      ScalableDimension: dynamodb:index:WriteCapacityUnits
-      ServiceNamespace: dynamodb
-  TaskTrackingTableCompletionIndexWritePolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - TaskTrackingTableCompletionIndexWritePolicy
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref 'TaskTrackingTableCompletionIndexWriteTarget'
-      TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 75.0
-        ScaleInCooldown: 60
-        ScaleOutCooldown: 60
-        PredefinedMetricSpecification:
-          PredefinedMetricType: DynamoDBWriteCapacityUtilization
-    DependsOn:
-      - TaskTrackingTableCompletionIndexReadPolicy
-  TaskTrackingTableExecutionIndexReadTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableExecutionMaxRead
-      MinCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableExecutionMinRead
-      ResourceId: !Join
-        - /
-        - - table
-          - !Ref 'TaskTrackingTable'
-          - index
-          - WaitForExecutionTasks
-      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
-      ScalableDimension: dynamodb:index:ReadCapacityUnits
-      ServiceNamespace: dynamodb
-  TaskTrackingTableExecutionIndexReadPolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - TaskTrackingTableExecutionIndexReadPolicy
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref 'TaskTrackingTableExecutionIndexReadTarget'
-      TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 75.0
-        ScaleInCooldown: 60
-        ScaleOutCooldown: 60
-        PredefinedMetricSpecification:
-          PredefinedMetricType: DynamoDBReadCapacityUtilization
-    DependsOn:
-      - TaskTrackingTableCompletionIndexWritePolicy
-  TaskTrackingTableExecutionIndexWriteTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableExecutionMaxWrite
-      MinCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - TrackingTableExecutionMinWrite
-      ResourceId: !Join
-        - /
-        - - table
-          - !Ref 'TaskTrackingTable'
-          - index
-          - WaitForExecutionTasks
-      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
-      ScalableDimension: dynamodb:index:WriteCapacityUnits
-      ServiceNamespace: dynamodb
-  TaskTrackingTableExecutionIndexWritePolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - TaskTrackingTableExecutionIndexWritePolicy
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref 'TaskTrackingTableExecutionIndexWriteTarget'
-      TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 75.0
-        ScaleInCooldown: 60
-        ScaleOutCooldown: 60
-        PredefinedMetricSpecification:
-          PredefinedMetricType: DynamoDBWriteCapacityUtilization
-    DependsOn:
-      - TaskTrackingTableExecutionIndexReadPolicy
   ConcurrencyTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -829,80 +866,22 @@ Resources:
       KeySchema:
         - AttributeName: ConcurrencyId
           KeyType: HASH
-      ProvisionedThroughput:
-        ReadCapacityUnits: 2
-        WriteCapacityUnits: 2
-  ConcurrencyTableAutoScalingReadTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
+      BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+  TriggerTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      MaxCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - ConcurrencyTableMaxRead
-      MinCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - ConcurrencyTableMinRead
-      ResourceId: !Join
-        - /
-        - - table
-          - !Ref 'ConcurrencyTable'
-      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
-      ScalableDimension: dynamodb:table:ReadCapacityUnits
-      ServiceNamespace: dynamodb
-  ConcurrencyTableAutoScalingReadPolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - ConcurrencyTableAutoScalingReadPolicy
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref 'ConcurrencyTableAutoScalingReadTarget'
-      TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 75.0
-        ScaleInCooldown: 60
-        ScaleOutCooldown: 60
-        PredefinedMetricSpecification:
-          PredefinedMetricType: DynamoDBReadCapacityUtilization
-    DependsOn:
-      - TaskTrackingTableExecutionIndexWritePolicy
-  ConcurrencyTableAutoScalingWriteTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - ConcurrencyTableMaxWrite
-      MinCapacity: !FindInMap
-        - Settings
-        - DynamoDbTableCapacities
-        - ConcurrencyTableMinWrite
-      ResourceId: !Join
-        - /
-        - - table
-          - !Ref 'ConcurrencyTable'
-      RoleARN: !GetAtt 'OpsAutomatorScalingRole.Arn'
-      ScalableDimension: dynamodb:table:WriteCapacityUnits
-      ServiceNamespace: dynamodb
-  ConcurrencyTableAutoScalingWritePolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - ConcurrencyTableAutoScalingWritePolicy
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref 'ConcurrencyTableAutoScalingWriteTarget'
-      TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 75.0
-        ScaleInCooldown: 60
-        ScaleOutCooldown: 60
-        PredefinedMetricSpecification:
-          PredefinedMetricType: DynamoDBWriteCapacityUtilization
-    DependsOn:
-      - ConcurrencyTableAutoScalingReadPolicy
-  SchedulerLogGroup:
+      AttributeDefinitions:
+        - AttributeName: Name
+          AttributeType: S
+      KeySchema:
+        - AttributeName: Name
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: KEYS_ONLY
+  OpsAutomatorLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Join
@@ -910,23 +889,127 @@ Resources:
         - - !Ref 'AWS::StackName'
           - logs
       RetentionInDays: !Ref 'LogRetentionDays'
-  SchedulerSnsTopic:
+  OpsAutomatorIssuesTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: !Ref 'AWS::StackName'
-  SchedulerDefault:
+      DisplayName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - IssuesTopicDisplayName
+      TopicName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - IssuesTopic
+  OpsAutomatorNotificationsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - NotificationsTopicDisplayName
+      TopicName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - NotificationsTopic
+  OpsAutomatorEventsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - EventsTopicDisplayName
+      TopicName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - EventsTopic
+  OpsAutomatorEventsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F18
+            reason: '* is used as Account pseudo variable cannot be used, access is
+              restricted by condition'
+    Properties:
+      Topics:
+        - !Ref 'OpsAutomatorEventsTopic'
+      PolicyDocument:
+        Version: '2008-10-17'
+        Id: default_policy
+        Statement:
+          - Sid: default_sid
+            Effect: Allow
+            Principal:
+              AWS: '*'
+            Action:
+              - SNS:GetTopicAttributes
+              - SNS:SetTopicAttributes
+              - SNS:AddPermission
+              - SNS:RemovePermission
+              - SNS:DeleteTopic
+              - SNS:Subscribe
+              - SNS:ListSubscriptionsByTopic
+              - SNS:Publish
+              - SNS:Receive
+            Resource: !Ref 'OpsAutomatorEventsTopic'
+            Condition:
+              StringEquals:
+                AWS:SourceOwner: !Ref 'AWS::AccountId'
+          - Sid: publish_sid_events
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: SNS:Publish
+            Resource: !Ref 'OpsAutomatorEventsTopic'
+          - Sid: publish_sid_s3
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: SNS:Publish
+            Resource: !Ref 'OpsAutomatorEventsTopic'
+          - Sid: subscribe_sid
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action:
+              - SNS:Subscribe
+              - SNS:Receive
+            Resource: !Ref 'OpsAutomatorEventsTopic'
+  OpsAutomatorLambdaFunctionStandard:
     Type: AWS::Lambda::Function
     Properties:
       Code:
         S3Bucket: %bucket%
-        S3Key: ops-automator-deploy/ops-automator-%version%.zip
+        S3Key: ops-automator/%version%/ops-automator-%version%.zip
       FunctionName: !Join
         - '-'
         - - !Ref 'AWS::StackName'
-          - SchedulerDefault
+          - !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
+          - Standard
       Handler: main.lambda_handler
       Runtime: python2.7
-      Role: !GetAtt 'SchedulerRole.Arn'
+      Role: !GetAtt 'OpsAutomatorLambdaRole.Arn'
       Environment:
         Variables:
           LAST_SCHEDULER_RUN_TABLE: !Ref 'LastSchedulerExecutionTable'
@@ -938,16 +1021,99 @@ Resources:
           ACTION_TRACKING_TABLE: !Ref 'TaskTrackingTable'
           CONFIG_TABLE: !Ref 'ConfigurationTable'
           CONFIG_BUCKET: !Ref 'Configuration'
+          REPORTING_BUCKET: !Ref 'Reporting'
           CONCURRENCY_TABLE: !Ref 'ConcurrencyTable'
-          SCHEDULER_TAG_NAME: !Ref 'TagName'
-          LOG_GROUP: !Ref 'SchedulerLogGroup'
+          TASKLIST_TAG_NAME: !Ref 'TagName'
+          LOG_GROUP: !Ref 'OpsAutomatorLogGroup'
+          CLOUDWATCH_TRIGGER_TABLE: !Ref 'TriggerTable'
+          LOGGING_QUEUE_URL: !Ref 'OpsAutomatorCloudWatchQueue'
+          LAMBDA_NAME: !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
           STACK_NAME: !Ref 'AWS::StackName'
           STACK_ID: !Ref 'AWS::StackId'
-          SNS_TOPIC: !Ref 'SchedulerSnsTopic'
+          OPS_AUTOMATOR_ACCOUNT: !Ref 'AWS::AccountId'
+          OPS_AUTOMATOR_ROLE_ARN: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+          LAMBDA_TIMEOUT: 900
+          TASK_CLEANUP_ENABLED: !If
+            - EnableTaskCleanupCondition
+            - 'True'
+            - 'False'
+          TASK_RETENTION_HOURS: !Ref 'TaskRetentionHours'
+          KEEP_FAILED_TASKS: !If
+            - KeepFailedTasksCondition
+            - 'True'
+            - 'False'
+          USER_AGENT: !Join
+            - '-'
+            - - OpsAutomator
+              - !Ref 'AWS::StackName'
+              - '%version%'
           SEND_METRICS: !FindInMap
             - YesNoBoolean
-            - !Ref 'SendAnonymousData'
+            - !FindInMap
+              - Send
+              - AnonymousUsage
+              - Data
             - Value
+          OPS_AUTOMATOR_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorRule
+          COMPLETION_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorCompletionRule
+          SNS_ISSUES_TOPIC_ARN: !Ref 'OpsAutomatorIssuesTopic'
+          SNS_RESULT_TOPIC_ARN: !Ref 'OpsAutomatorNotificationsTopic'
+          EVENTS_TOPIC_ARN: !Ref 'OpsAutomatorEventsTopic'
+          BOTO_RETRY_STATS: 'False'
+          BOTO_RETRY_OUTPUT: 'False'
+          CLOUDWATCH_METRICS: !FindInMap
+            - YesNoBoolean
+            - !Ref 'UseCloudWatchMetrics'
+            - Value
+          USE_ECS: !If
+            - UseEcs
+            - 'True'
+            - 'False'
+          ECS_CLUSTER: !If
+            - UseEcs
+            - !FindInMap
+              - Settings
+              - EcsCluster
+              - ClusterName
+            - !Ref 'AWS::NoValue'
+          ECS_OPS_AUTOMATOR_TASK: !If
+            - UseEcs
+            - !Ref 'OpsAutomatorTask'
+            - ''
+          DEBUG_TASK_TRACKING_HANDLER: 'False'
+          DEBUG_MAIN_EVENT_HANDLER: 'False'
+          DEBUG_EVENT_HANDLERS: 'False'
+          RESOURCE_ENCRYPTION_KEY: !If
+            - EncryptResourceData
+            - !Ref 'ResourceEncryptionKey'
+            - ''
+          SERVICE_LIMIT_CONCURRENT_EBS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentEbsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_RDS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentRdsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_IMAGE_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentImageCopies
           SOLUTION_ID: !FindInMap
             - Settings
             - Metrics
@@ -956,75 +1122,381 @@ Resources:
             - Settings
             - Metrics
             - Url
-      MemorySize: !Ref 'LambdaSize'
-      Timeout: '300'
-      Description: Task scheduler (default), version %version%
+      MemorySize: !FindInMap
+        - Settings
+        - ActionMemory
+        - Standard
+      Timeout: '900'
+      Description: Ops Automator (Standard, Memory 128 MB), version %version%
     DependsOn:
-      - SchedulerRole
-  TaskResources:
-    Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-  OpsAutomatorInvokePermissionDynamodb:
-    Type: AWS::Lambda::Permission
+      - OpsAutomatorLambdaRole
+  OpsAutomatorCloudWatchQueueHandlerLambda:
+    Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !GetAtt 'SchedulerDefault.Arn'
-      Action: lambda:InvokeFunction
-      Principal: dynamodb.amazonaws.com
+      Code:
+        S3Bucket: %bucket%
+        S3Key: ops-automator/%version%/cloudwatch-handler-%version%.zip
+      FunctionName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - CloudWatchQueueHandlerLambdaFunction
+      Handler: cloudwatch_queue_handler_lambda.lambda_handler
+      Runtime: python2.7
+      Role: !GetAtt 'OpsAutomatorCloudWatchLogHandlerRole.Arn'
+      Environment:
+        Variables:
+          CWL_LIMIT_PUT_CALLS_PER_STREAM: !FindInMap
+            - Settings
+            - CloudWatchApiLimits
+            - MaxPutCallsPerStream
+          CWL_LIMIT_PUT_CALLS_PER_ACCOUNT: !If
+            - CloudWatchPutLimit800
+            - 800
+            - 1500
+          CWL_LIMIT_API_CALLS: !FindInMap
+            - Settings
+            - CloudWatchApiLimits
+            - MaxApiCalls
+          LOGGING_QUEUE_URL: !Ref 'OpsAutomatorCloudWatchQueue'
+          CLOUDWATCH_TRIGGER_TABLE: !Ref 'TriggerTable'
+          LOG_GROUP: !Ref 'OpsAutomatorLogGroup'
+      MemorySize: 128
+      Timeout: '900'
+      Description: Ops Automator CloudWatch Queue Handler, version %version%
+    DependsOn:
+      - OpsAutomatorCloudWatchLogHandlerRole
+      - OpsAutomatorCloudWatchQueue
+  OpsAutomatorEventsTopicSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
+      Protocol: lambda
+      TopicArn: !Ref 'OpsAutomatorEventsTopic'
+  OpsAutomatorTask:
+    Type: AWS::ECS::TaskDefinition
+    Condition: UseEcs
+    Properties:
+      Family: !Sub '${AWS::StackName}-ops-automator-task'
+      ContainerDefinitions:
+        - Essential: true
+          Environment:
+            - Name: IS_ECS_JOB
+              Value: 'True'
+            - Name: SUPPRESS_LOG_TO_STDOUT
+              Value: 'True'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref 'OpsAutomatorLogGroup'
+              awslogs-stream-prefix: Ecs
+              awslogs-region: !Ref 'AWS::Region'
+          Name: ops-automator
+          Image: !Sub
+            - ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${repository}:latest
+            - repository: !Ref 'OpsAutomatorEcsRepository'
+          MemoryReservation: 128
+      TaskRoleArn: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+      Volumes: []
   Configuration:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     Properties:
+      BucketName: !If
+        - CustomConfigBucketName
+        - !FindInMap
+          - Settings
+          - Names
+          - ConfigurationBucket
+        - !Ref 'AWS::NoValue'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
       LifecycleConfiguration:
         Rules:
           - ExpirationInDays: !Ref 'ConfigBackupDays'
             Prefix: Backups/
             Status: Enabled
-  SchedulerInvokePermissionDynamodb:
+  Reporting:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !If
+        - CustomReportingBucketName
+        - !FindInMap
+          - Settings
+          - Names
+          - ReportingBucket
+        - !Ref 'AWS::NoValue'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  OpsAutomatorCloudWatchQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      FifoQueue: !If
+        - FifoQueue
+        - 'True'
+        - !Ref 'AWS::NoValue'
+      MessageRetentionPeriod: 86400
+      ReceiveMessageWaitTimeSeconds: 0
+      VisibilityTimeout: 300
+      QueueName: !Join
+        - ''
+        - - !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - LogQueueName
+          - !If
+            - FifoQueue
+            - .fifo
+            - ''
+  OpsAutomatorCloudWatchQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Id: OpsAutomatorPutPolicy
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowSendMessage
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+            Action:
+              - sqs:SendMessage
+            Resource:
+              - !GetAtt 'OpsAutomatorCloudWatchQueue.Arn'
+          - Sid: AllowReceiveMessage
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt 'OpsAutomatorCloudWatchLogHandlerRole.Arn'
+            Action:
+              - sqs:DeleteMessage
+              - sqs:ReceiveMessage
+            Resource:
+              - !GetAtt 'OpsAutomatorCloudWatchQueue.Arn'
+      Queues:
+        - !Ref 'OpsAutomatorCloudWatchQueue'
+  TaskResources:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !If
+        - CustomResourcesBucketName
+        - !FindInMap
+          - Settings
+          - Names
+          - ResourcesBucket
+        - !Ref 'AWS::NoValue'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  OpsAutomatorInvokePermissionDynamodb:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt 'SchedulerDefault.Arn'
+      FunctionName: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
       Action: lambda:InvokeFunction
       Principal: dynamodb.amazonaws.com
+  CloudWatchHandlerInvokePermissionDynamodb:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt 'OpsAutomatorCloudWatchQueueHandlerLambda.Arn'
+      Action: lambda:InvokeFunction
+      Principal: dynamodb.amazonaws.com
+  InvokePermissionSNS:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref 'OpsAutomatorEventsTopic'
   InvokePermissionCloudWatchEvents:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt 'SchedulerDefault.Arn'
+      FunctionName: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
-      SourceArn: !GetAtt 'SchedulerRule.Arn'
+      SourceArn: !GetAtt 'OpsAutomatorRule.Arn'
   InvokePermissionCloudWatchEventsCompletion:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt 'SchedulerDefault.Arn'
+      FunctionName: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
-      SourceArn: !GetAtt 'CompletionRule.Arn'
-  SchedulerCleanupTask:
+      SourceArn: !GetAtt 'OpsAutomatorCompletionRule.Arn'
+  Ec2StateEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: !Sub 'Ops Automator - Rule for CloudWatch EC2 events for stack
+        ${AWS::StackName}'
+      Name: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - Ec2StateEventRule
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - EC2 Instance State-change Notification
+        detail:
+          state:
+            - running
+            - stopped
+            - terminated
+      Targets:
+        - Arn: !Ref 'OpsAutomatorEventsTopic'
+          Id: EC2StateEventsToTopic
+  EbsSnapshotEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: !Sub 'Ops Automator - Rule for CloudWatch EBS events for stack
+        ${AWS::StackName}'
+      Name: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - EbsSnapshotEventRule
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - EBS Snapshot Notification
+        detail:
+          event:
+            - copySnapshot
+            - createSnapshot
+            - shareSnapshot
+          result:
+            - succeeded
+      Targets:
+        - Arn: !Ref 'OpsAutomatorEventsTopic'
+          Id: EbsSnapshotEventsToTopic
+  CloudTrailRdsEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: !Sub 'Ops Automator - Rule for CloudTrail events for stack ${AWS::StackName}'
+      Name: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - CloudTrailRdsEventRule
+      EventPattern:
+        source:
+          - aws.rds
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - rds.amazonaws.com
+          eventName:
+            - CreateDBCluster
+            - CreateDBInstance
+            - DeleteDBCluster
+            - DeleteDBInstance
+            - RestoreDBClusterSnapshot
+            - RestoreDBInstanceFromDBSnapshot
+            - StartDBCluster
+            - StartDBInstance
+            - StartDBInstance
+            - StopDBCluster
+            - StopDBInstance
+      Targets:
+        - Arn: !Ref 'OpsAutomatorEventsTopic'
+          Id: CloudTrailRdsEventsToTopic
+  TagChangeEventsRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: !Sub 'Ops Automator - Rule for tag change events for stack ${AWS::StackName}'
+      Name: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - TaggingEventRule
+      EventPattern:
+        source:
+          - aws.tag
+        detail-type:
+          - Tag Change on Resource
+        detail:
+          service:
+            - ec2
+            - rds
+          resource-type:
+            - instance
+            - volume
+            - snapshot
+            - image
+            - db
+            - cluster
+      Targets:
+        - Arn: !Ref 'OpsAutomatorEventsTopic'
+          Id: TagChangeEventsToTopic
+  OpsAutomatorExportTask:
     Type: Custom::TaskConfig
     Properties:
-      ServiceToken: !GetAtt 'SchedulerDefault.Arn'
-      Timeout: '120'
+      ServiceToken: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
+      Timeout: '300'
+      Name: TaskTableExport
+      Description: Internal task for exporting task tracking table to S3, do not delete
+      Parameters:
+        S3Bucket: !Ref 'Configuration'
+        S3Prefix: Exports/
+      Interval: 59 0/4 * * ?
+      Internal: 'True'
+      Action: SchedulerTaskExport
+      TaskMetrics: 'False'
+      Enabled: !If
+        - EnableTaskExportCondition
+        - 'True'
+        - 'False'
+      StackId: !Ref 'AWS::StackId'
+  OpsAutomatorCleanupTask:
+    Type: Custom::TaskConfig
+    Properties:
+      ServiceToken: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
+      Timeout: '300'
       Name: TaskTableCleanup
-      Description: Internal task for cleaning task tracking table, do not delete
+      Description: Internal task for cleaning task tracking table, do not delete.
+        Deletes task not deleted by TTL
       Parameters:
         TaskRetentionHours: !Ref 'TaskRetentionHours'
         RetainFailedTasks: !If
           - KeepFailedTasksCondition
           - 'True'
           - 'False'
-      Interval: 59 0/4 * * ?
+      Interval: '0 2 * * ?'
       Internal: 'True'
+      TaskMetrics: 'False'
       Action: SchedulerTaskCleanup
       Enabled: !If
         - EnableTaskCleanupCondition
         - 'True'
         - 'False'
       StackId: !Ref 'AWS::StackId'
-  SchedulerBackupTask:
+    DependsOn:
+      - OpsAutomatorExportTask
+  OpsAutomatorBackupTask:
     Type: Custom::TaskConfig
     Properties:
-      ServiceToken: !GetAtt 'SchedulerDefault.Arn'
-      Timeout: '120'
+      ServiceToken: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
+      Timeout: '300'
       Name: TaskConfigurationBackup
       Description: Internal task for daily backup of configuration table, do not delete
       Parameters:
@@ -1032,65 +1504,844 @@ Resources:
         S3Prefix: Backups/
       Interval: '0 0 * * ?'
       Internal: 'True'
+      TaskMetrics: 'False'
       Action: SchedulerConfigBackup
       Enabled: 'True'
       StackId: !Ref 'AWS::StackId'
-  SchedulerSetupHelper:
-    Type: Custom::SchedulerSetupHelper
+    DependsOn:
+      - OpsAutomatorCleanupTask
+  OpsAutomatorSetupHelper:
+    Type: Custom::OpsAutomatorSetupHelper
     Properties:
-      ServiceToken: !GetAtt 'SchedulerDefault.Arn'
+      ServiceToken: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
+      UseEcs: !If
+        - UseEcs
+        - 'True'
+        - 'False'
       Timeout: '150'
       LogRetentionDays: !Ref 'LogRetentionDays'
       StackVersion: '%version%'
-      SchedulerRole: !GetAtt 'SchedulerRole.Arn'
+      OpsAutomatorLambdaRole: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+      OptimizeCrossAccountTemplate: !FindInMap
+        - Settings
+        - Templates
+        - OptimizeCrossAccountTemplate
+      EventForwardLambdaRole: !GetAtt 'OpsAutomatorEventsForwardRole.Arn'
+      OpsAutomatorTopicArn: !Ref 'OpsAutomatorEventsTopic'
       DeploymentVersion: '%version%'
     DependsOn:
       - ConfigurationTable
-  SchedulerRule:
+      - TriggerTable
+      - OpsAutomatorCloudWatchQueueHandlerLambda
+  OpsAutomatorRule:
     Type: AWS::Events::Rule
     Properties:
-      Description: Rule to trigger instance for task scheduler
+      Description: !Sub 'Ops Automator - Rule to trigger scheduled tasks for stack
+        ${AWS::StackName}'
+      Name: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorRule
       ScheduleExpression: cron(0/1 * * * ? *)
       State: !FindInMap
         - EnabledDisabled
         - !Ref 'SchedulerActive'
         - Value
       Targets:
-        - Id: TaskScheduler
-          Arn: !GetAtt 'SchedulerDefault.Arn'
-  CompletionRule:
+        - Id: OpsAutomator
+          Arn: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
+  OpsAutomatorCompletionRule:
     Type: AWS::Events::Rule
     Properties:
-      Description: Rule to trigger instance for scheduler task completion check
+      Description: !Sub 'Ops Automator - Rule to trigger completion checks for stack
+        ${AWS::StackName}'
+      Name: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorCompletionRule
       ScheduleExpression: cron(0/1 * * * ? *)
       State: ENABLED
       Targets:
-        - Id: TaskScheduler
-          Arn: !GetAtt 'SchedulerDefault.Arn'
+        - Id: OpsAutomatorCompletion
+          Arn: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
   ActionEventMappingTaskTracking:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       BatchSize: 20
       Enabled: true
       EventSourceArn: !GetAtt 'TaskTrackingTable.StreamArn'
-      FunctionName: !GetAtt 'SchedulerDefault.Arn'
+      FunctionName: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
       StartingPosition: TRIM_HORIZON
-  ActionEventMappingConfiguration:
+    DependsOn: OpsAutomatorLambdaRole
+  ActionEventMappingConcurrencyTable:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       BatchSize: 1
       Enabled: true
-      EventSourceArn: !GetAtt 'ConfigurationTable.StreamArn'
-      FunctionName: !GetAtt 'SchedulerDefault.Arn'
+      EventSourceArn: !GetAtt 'ConcurrencyTable.StreamArn'
+      FunctionName: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
       StartingPosition: TRIM_HORIZON
+    DependsOn: OpsAutomatorLambdaRole
+  ActionEventMappingConfiguration:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 20
+      Enabled: true
+      EventSourceArn: !GetAtt 'ConfigurationTable.StreamArn'
+      FunctionName: !GetAtt 'OpsAutomatorLambdaFunctionStandard.Arn'
+      StartingPosition: TRIM_HORIZON
+  ActionEventMappingTriggerTable:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      Enabled: true
+      EventSourceArn: !GetAtt 'TriggerTable.StreamArn'
+      FunctionName: !GetAtt 'OpsAutomatorCloudWatchQueueHandlerLambda.Arn'
+      StartingPosition: TRIM_HORIZON
+  OpsAutomatorEcsRepository:
+    Condition: UseEcs
+    Type: AWS::ECR::Repository
+  ResourceEncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for encrypting Ops Automator resource data
+      KeyPolicy:
+        Version: '2012-10-17'
+        Id: key-default-1
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Join
+                - ''
+                - - !Sub 'arn:${AWS::Partition}:iam::'
+                  - !Ref 'AWS::AccountId'
+                  - :root
+            Action: kms:*
+            Resource: '*'
+          - Sid: Allow use of the key
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+    Condition: EncryptResourceData
+  ResourceEncryptionKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${AWS::StackName}-ResourceEncryptionKey'
+      TargetKeyId: !Ref 'ResourceEncryptionKey'
+    Condition: EncryptResourceData
+  OpsAutomatorLambdaFunctionMedium:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: %bucket%
+        S3Key: ops-automator/%version%/ops-automator-%version%.zip
+      FunctionName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
+          - Medium
+      Handler: main.lambda_handler
+      Runtime: python2.7
+      Role: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+      Environment:
+        Variables:
+          LAST_SCHEDULER_RUN_TABLE: !Ref 'LastSchedulerExecutionTable'
+          RESOURCE_BUCKET: !Ref 'TaskResources'
+          RESOURCE_TO_S3_SIZE: !FindInMap
+            - Settings
+            - Resources
+            - ResourceToS3SizeKB
+          ACTION_TRACKING_TABLE: !Ref 'TaskTrackingTable'
+          CONFIG_TABLE: !Ref 'ConfigurationTable'
+          CONFIG_BUCKET: !Ref 'Configuration'
+          REPORTING_BUCKET: !Ref 'Reporting'
+          CONCURRENCY_TABLE: !Ref 'ConcurrencyTable'
+          TASKLIST_TAG_NAME: !Ref 'TagName'
+          LOG_GROUP: !Ref 'OpsAutomatorLogGroup'
+          CLOUDWATCH_TRIGGER_TABLE: !Ref 'TriggerTable'
+          LOGGING_QUEUE_URL: !Ref 'OpsAutomatorCloudWatchQueue'
+          LAMBDA_NAME: !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
+          STACK_NAME: !Ref 'AWS::StackName'
+          STACK_ID: !Ref 'AWS::StackId'
+          OPS_AUTOMATOR_ACCOUNT: !Ref 'AWS::AccountId'
+          OPS_AUTOMATOR_ROLE_ARN: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+          LAMBDA_TIMEOUT: 900
+          TASK_CLEANUP_ENABLED: !If
+            - EnableTaskCleanupCondition
+            - 'True'
+            - 'False'
+          TASK_RETENTION_HOURS: !Ref 'TaskRetentionHours'
+          KEEP_FAILED_TASKS: !If
+            - KeepFailedTasksCondition
+            - 'True'
+            - 'False'
+          USER_AGENT: !Join
+            - '-'
+            - - OpsAutomator
+              - !Ref 'AWS::StackName'
+              - '%version%'
+          SEND_METRICS: !FindInMap
+            - YesNoBoolean
+            - !FindInMap
+              - Send
+              - AnonymousUsage
+              - Data
+            - Value
+          OPS_AUTOMATOR_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorRule
+          COMPLETION_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorCompletionRule
+          SNS_ISSUES_TOPIC_ARN: !Ref 'OpsAutomatorIssuesTopic'
+          SNS_RESULT_TOPIC_ARN: !Ref 'OpsAutomatorNotificationsTopic'
+          EVENTS_TOPIC_ARN: !Ref 'OpsAutomatorEventsTopic'
+          BOTO_RETRY_STATS: 'False'
+          BOTO_RETRY_OUTPUT: 'False'
+          CLOUDWATCH_METRICS: !FindInMap
+            - YesNoBoolean
+            - !Ref 'UseCloudWatchMetrics'
+            - Value
+          USE_ECS: !If
+            - UseEcs
+            - 'True'
+            - 'False'
+          ECS_CLUSTER: !If
+            - UseEcs
+            - !FindInMap
+              - Settings
+              - EcsCluster
+              - ClusterName
+            - !Ref 'AWS::NoValue'
+          ECS_OPS_AUTOMATOR_TASK: !If
+            - UseEcs
+            - !Ref 'OpsAutomatorTask'
+            - ''
+          DEBUG_TASK_TRACKING_HANDLER: 'False'
+          DEBUG_MAIN_EVENT_HANDLER: 'False'
+          DEBUG_EVENT_HANDLERS: 'False'
+          RESOURCE_ENCRYPTION_KEY: !If
+            - EncryptResourceData
+            - !Ref 'ResourceEncryptionKey'
+            - ''
+          SERVICE_LIMIT_CONCURRENT_EBS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentEbsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_RDS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentRdsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_IMAGE_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentImageCopies
+          SOLUTION_ID: !FindInMap
+            - Settings
+            - Metrics
+            - SolutionId
+          METRICS_URL: !FindInMap
+            - Settings
+            - Metrics
+            - Url
+      MemorySize: '256'
+      Timeout: 900
+      Description: Ops Automator (Medium, Memory 256 MB), version %version%
+    DependsOn:
+      - OpsAutomatorLambdaRole
+  OpsAutomatorLambdaFunctionLarge:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: %bucket%
+        S3Key: ops-automator/%version%/ops-automator-%version%.zip
+      FunctionName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
+          - Large
+      Handler: main.lambda_handler
+      Runtime: python2.7
+      Role: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+      Environment:
+        Variables:
+          LAST_SCHEDULER_RUN_TABLE: !Ref 'LastSchedulerExecutionTable'
+          RESOURCE_BUCKET: !Ref 'TaskResources'
+          RESOURCE_TO_S3_SIZE: !FindInMap
+            - Settings
+            - Resources
+            - ResourceToS3SizeKB
+          ACTION_TRACKING_TABLE: !Ref 'TaskTrackingTable'
+          CONFIG_TABLE: !Ref 'ConfigurationTable'
+          CONFIG_BUCKET: !Ref 'Configuration'
+          REPORTING_BUCKET: !Ref 'Reporting'
+          CONCURRENCY_TABLE: !Ref 'ConcurrencyTable'
+          TASKLIST_TAG_NAME: !Ref 'TagName'
+          LOG_GROUP: !Ref 'OpsAutomatorLogGroup'
+          CLOUDWATCH_TRIGGER_TABLE: !Ref 'TriggerTable'
+          LOGGING_QUEUE_URL: !Ref 'OpsAutomatorCloudWatchQueue'
+          LAMBDA_NAME: !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
+          STACK_NAME: !Ref 'AWS::StackName'
+          STACK_ID: !Ref 'AWS::StackId'
+          OPS_AUTOMATOR_ACCOUNT: !Ref 'AWS::AccountId'
+          OPS_AUTOMATOR_ROLE_ARN: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+          LAMBDA_TIMEOUT: 900
+          TASK_CLEANUP_ENABLED: !If
+            - EnableTaskCleanupCondition
+            - 'True'
+            - 'False'
+          TASK_RETENTION_HOURS: !Ref 'TaskRetentionHours'
+          KEEP_FAILED_TASKS: !If
+            - KeepFailedTasksCondition
+            - 'True'
+            - 'False'
+          USER_AGENT: !Join
+            - '-'
+            - - OpsAutomator
+              - !Ref 'AWS::StackName'
+              - '%version%'
+          SEND_METRICS: !FindInMap
+            - YesNoBoolean
+            - !FindInMap
+              - Send
+              - AnonymousUsage
+              - Data
+            - Value
+          OPS_AUTOMATOR_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorRule
+          COMPLETION_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorCompletionRule
+          SNS_ISSUES_TOPIC_ARN: !Ref 'OpsAutomatorIssuesTopic'
+          SNS_RESULT_TOPIC_ARN: !Ref 'OpsAutomatorNotificationsTopic'
+          EVENTS_TOPIC_ARN: !Ref 'OpsAutomatorEventsTopic'
+          BOTO_RETRY_STATS: 'False'
+          BOTO_RETRY_OUTPUT: 'False'
+          CLOUDWATCH_METRICS: !FindInMap
+            - YesNoBoolean
+            - !Ref 'UseCloudWatchMetrics'
+            - Value
+          USE_ECS: !If
+            - UseEcs
+            - 'True'
+            - 'False'
+          ECS_CLUSTER: !If
+            - UseEcs
+            - !FindInMap
+              - Settings
+              - EcsCluster
+              - ClusterName
+            - !Ref 'AWS::NoValue'
+          ECS_OPS_AUTOMATOR_TASK: !If
+            - UseEcs
+            - !Ref 'OpsAutomatorTask'
+            - ''
+          DEBUG_TASK_TRACKING_HANDLER: 'False'
+          DEBUG_MAIN_EVENT_HANDLER: 'False'
+          DEBUG_EVENT_HANDLERS: 'False'
+          RESOURCE_ENCRYPTION_KEY: !If
+            - EncryptResourceData
+            - !Ref 'ResourceEncryptionKey'
+            - ''
+          SERVICE_LIMIT_CONCURRENT_EBS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentEbsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_RDS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentRdsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_IMAGE_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentImageCopies
+          SOLUTION_ID: !FindInMap
+            - Settings
+            - Metrics
+            - SolutionId
+          METRICS_URL: !FindInMap
+            - Settings
+            - Metrics
+            - Url
+      MemorySize: '512'
+      Timeout: 900
+      Description: Ops Automator (Large, Memory 512 MB), version %version%
+    DependsOn:
+      - OpsAutomatorLambdaRole
+  OpsAutomatorLambdaFunctionXLarge:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: %bucket%
+        S3Key: ops-automator/%version%/ops-automator-%version%.zip
+      FunctionName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
+          - XLarge
+      Handler: main.lambda_handler
+      Runtime: python2.7
+      Role: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+      Environment:
+        Variables:
+          LAST_SCHEDULER_RUN_TABLE: !Ref 'LastSchedulerExecutionTable'
+          RESOURCE_BUCKET: !Ref 'TaskResources'
+          RESOURCE_TO_S3_SIZE: !FindInMap
+            - Settings
+            - Resources
+            - ResourceToS3SizeKB
+          ACTION_TRACKING_TABLE: !Ref 'TaskTrackingTable'
+          CONFIG_TABLE: !Ref 'ConfigurationTable'
+          CONFIG_BUCKET: !Ref 'Configuration'
+          REPORTING_BUCKET: !Ref 'Reporting'
+          CONCURRENCY_TABLE: !Ref 'ConcurrencyTable'
+          TASKLIST_TAG_NAME: !Ref 'TagName'
+          LOG_GROUP: !Ref 'OpsAutomatorLogGroup'
+          CLOUDWATCH_TRIGGER_TABLE: !Ref 'TriggerTable'
+          LOGGING_QUEUE_URL: !Ref 'OpsAutomatorCloudWatchQueue'
+          LAMBDA_NAME: !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
+          STACK_NAME: !Ref 'AWS::StackName'
+          STACK_ID: !Ref 'AWS::StackId'
+          OPS_AUTOMATOR_ACCOUNT: !Ref 'AWS::AccountId'
+          OPS_AUTOMATOR_ROLE_ARN: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+          LAMBDA_TIMEOUT: 900
+          TASK_CLEANUP_ENABLED: !If
+            - EnableTaskCleanupCondition
+            - 'True'
+            - 'False'
+          TASK_RETENTION_HOURS: !Ref 'TaskRetentionHours'
+          KEEP_FAILED_TASKS: !If
+            - KeepFailedTasksCondition
+            - 'True'
+            - 'False'
+          USER_AGENT: !Join
+            - '-'
+            - - OpsAutomator
+              - !Ref 'AWS::StackName'
+              - '%version%'
+          SEND_METRICS: !FindInMap
+            - YesNoBoolean
+            - !FindInMap
+              - Send
+              - AnonymousUsage
+              - Data
+            - Value
+          OPS_AUTOMATOR_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorRule
+          COMPLETION_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorCompletionRule
+          SNS_ISSUES_TOPIC_ARN: !Ref 'OpsAutomatorIssuesTopic'
+          SNS_RESULT_TOPIC_ARN: !Ref 'OpsAutomatorNotificationsTopic'
+          EVENTS_TOPIC_ARN: !Ref 'OpsAutomatorEventsTopic'
+          BOTO_RETRY_STATS: 'False'
+          BOTO_RETRY_OUTPUT: 'False'
+          CLOUDWATCH_METRICS: !FindInMap
+            - YesNoBoolean
+            - !Ref 'UseCloudWatchMetrics'
+            - Value
+          USE_ECS: !If
+            - UseEcs
+            - 'True'
+            - 'False'
+          ECS_CLUSTER: !If
+            - UseEcs
+            - !FindInMap
+              - Settings
+              - EcsCluster
+              - ClusterName
+            - !Ref 'AWS::NoValue'
+          ECS_OPS_AUTOMATOR_TASK: !If
+            - UseEcs
+            - !Ref 'OpsAutomatorTask'
+            - ''
+          DEBUG_TASK_TRACKING_HANDLER: 'False'
+          DEBUG_MAIN_EVENT_HANDLER: 'False'
+          DEBUG_EVENT_HANDLERS: 'False'
+          RESOURCE_ENCRYPTION_KEY: !If
+            - EncryptResourceData
+            - !Ref 'ResourceEncryptionKey'
+            - ''
+          SERVICE_LIMIT_CONCURRENT_EBS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentEbsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_RDS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentRdsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_IMAGE_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentImageCopies
+          SOLUTION_ID: !FindInMap
+            - Settings
+            - Metrics
+            - SolutionId
+          METRICS_URL: !FindInMap
+            - Settings
+            - Metrics
+            - Url
+      MemorySize: '1024'
+      Timeout: 900
+      Description: Ops Automator (XLarge, Memory 1024 MB), version %version%
+    DependsOn:
+      - OpsAutomatorLambdaRole
+  OpsAutomatorLambdaFunctionXXLarge:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: %bucket%
+        S3Key: ops-automator/%version%/ops-automator-%version%.zip
+      FunctionName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
+          - XXLarge
+      Handler: main.lambda_handler
+      Runtime: python2.7
+      Role: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+      Environment:
+        Variables:
+          LAST_SCHEDULER_RUN_TABLE: !Ref 'LastSchedulerExecutionTable'
+          RESOURCE_BUCKET: !Ref 'TaskResources'
+          RESOURCE_TO_S3_SIZE: !FindInMap
+            - Settings
+            - Resources
+            - ResourceToS3SizeKB
+          ACTION_TRACKING_TABLE: !Ref 'TaskTrackingTable'
+          CONFIG_TABLE: !Ref 'ConfigurationTable'
+          CONFIG_BUCKET: !Ref 'Configuration'
+          REPORTING_BUCKET: !Ref 'Reporting'
+          CONCURRENCY_TABLE: !Ref 'ConcurrencyTable'
+          TASKLIST_TAG_NAME: !Ref 'TagName'
+          LOG_GROUP: !Ref 'OpsAutomatorLogGroup'
+          CLOUDWATCH_TRIGGER_TABLE: !Ref 'TriggerTable'
+          LOGGING_QUEUE_URL: !Ref 'OpsAutomatorCloudWatchQueue'
+          LAMBDA_NAME: !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
+          STACK_NAME: !Ref 'AWS::StackName'
+          STACK_ID: !Ref 'AWS::StackId'
+          OPS_AUTOMATOR_ACCOUNT: !Ref 'AWS::AccountId'
+          OPS_AUTOMATOR_ROLE_ARN: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+          LAMBDA_TIMEOUT: 900
+          TASK_CLEANUP_ENABLED: !If
+            - EnableTaskCleanupCondition
+            - 'True'
+            - 'False'
+          TASK_RETENTION_HOURS: !Ref 'TaskRetentionHours'
+          KEEP_FAILED_TASKS: !If
+            - KeepFailedTasksCondition
+            - 'True'
+            - 'False'
+          USER_AGENT: !Join
+            - '-'
+            - - OpsAutomator
+              - !Ref 'AWS::StackName'
+              - '%version%'
+          SEND_METRICS: !FindInMap
+            - YesNoBoolean
+            - !FindInMap
+              - Send
+              - AnonymousUsage
+              - Data
+            - Value
+          OPS_AUTOMATOR_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorRule
+          COMPLETION_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorCompletionRule
+          SNS_ISSUES_TOPIC_ARN: !Ref 'OpsAutomatorIssuesTopic'
+          SNS_RESULT_TOPIC_ARN: !Ref 'OpsAutomatorNotificationsTopic'
+          EVENTS_TOPIC_ARN: !Ref 'OpsAutomatorEventsTopic'
+          BOTO_RETRY_STATS: 'False'
+          BOTO_RETRY_OUTPUT: 'False'
+          CLOUDWATCH_METRICS: !FindInMap
+            - YesNoBoolean
+            - !Ref 'UseCloudWatchMetrics'
+            - Value
+          USE_ECS: !If
+            - UseEcs
+            - 'True'
+            - 'False'
+          ECS_CLUSTER: !If
+            - UseEcs
+            - !FindInMap
+              - Settings
+              - EcsCluster
+              - ClusterName
+            - !Ref 'AWS::NoValue'
+          ECS_OPS_AUTOMATOR_TASK: !If
+            - UseEcs
+            - !Ref 'OpsAutomatorTask'
+            - ''
+          DEBUG_TASK_TRACKING_HANDLER: 'False'
+          DEBUG_MAIN_EVENT_HANDLER: 'False'
+          DEBUG_EVENT_HANDLERS: 'False'
+          RESOURCE_ENCRYPTION_KEY: !If
+            - EncryptResourceData
+            - !Ref 'ResourceEncryptionKey'
+            - ''
+          SERVICE_LIMIT_CONCURRENT_EBS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentEbsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_RDS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentRdsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_IMAGE_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentImageCopies
+          SOLUTION_ID: !FindInMap
+            - Settings
+            - Metrics
+            - SolutionId
+          METRICS_URL: !FindInMap
+            - Settings
+            - Metrics
+            - Url
+      MemorySize: '2048'
+      Timeout: 900
+      Description: Ops Automator (XXLarge, Memory 2048 MB), version %version%
+    DependsOn:
+      - OpsAutomatorLambdaRole
+  OpsAutomatorLambdaFunctionXXXLarge:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: %bucket%
+        S3Key: ops-automator/%version%/ops-automator-%version%.zip
+      FunctionName: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
+          - XXXLarge
+      Handler: main.lambda_handler
+      Runtime: python2.7
+      Role: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+      Environment:
+        Variables:
+          LAST_SCHEDULER_RUN_TABLE: !Ref 'LastSchedulerExecutionTable'
+          RESOURCE_BUCKET: !Ref 'TaskResources'
+          RESOURCE_TO_S3_SIZE: !FindInMap
+            - Settings
+            - Resources
+            - ResourceToS3SizeKB
+          ACTION_TRACKING_TABLE: !Ref 'TaskTrackingTable'
+          CONFIG_TABLE: !Ref 'ConfigurationTable'
+          CONFIG_BUCKET: !Ref 'Configuration'
+          REPORTING_BUCKET: !Ref 'Reporting'
+          CONCURRENCY_TABLE: !Ref 'ConcurrencyTable'
+          TASKLIST_TAG_NAME: !Ref 'TagName'
+          LOG_GROUP: !Ref 'OpsAutomatorLogGroup'
+          CLOUDWATCH_TRIGGER_TABLE: !Ref 'TriggerTable'
+          LOGGING_QUEUE_URL: !Ref 'OpsAutomatorCloudWatchQueue'
+          LAMBDA_NAME: !FindInMap
+            - Settings
+            - Names
+            - OpsAutomatorLambdaFunction
+          STACK_NAME: !Ref 'AWS::StackName'
+          STACK_ID: !Ref 'AWS::StackId'
+          OPS_AUTOMATOR_ACCOUNT: !Ref 'AWS::AccountId'
+          OPS_AUTOMATOR_ROLE_ARN: !GetAtt 'OpsAutomatorLambdaRole.Arn'
+          LAMBDA_TIMEOUT: 900
+          TASK_CLEANUP_ENABLED: !If
+            - EnableTaskCleanupCondition
+            - 'True'
+            - 'False'
+          TASK_RETENTION_HOURS: !Ref 'TaskRetentionHours'
+          KEEP_FAILED_TASKS: !If
+            - KeepFailedTasksCondition
+            - 'True'
+            - 'False'
+          USER_AGENT: !Join
+            - '-'
+            - - OpsAutomator
+              - !Ref 'AWS::StackName'
+              - '%version%'
+          SEND_METRICS: !FindInMap
+            - YesNoBoolean
+            - !FindInMap
+              - Send
+              - AnonymousUsage
+              - Data
+            - Value
+          OPS_AUTOMATOR_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorRule
+          COMPLETION_RULE: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - !FindInMap
+                - Settings
+                - Names
+                - OpsAutomatorCompletionRule
+          SNS_ISSUES_TOPIC_ARN: !Ref 'OpsAutomatorIssuesTopic'
+          SNS_RESULT_TOPIC_ARN: !Ref 'OpsAutomatorNotificationsTopic'
+          EVENTS_TOPIC_ARN: !Ref 'OpsAutomatorEventsTopic'
+          BOTO_RETRY_STATS: 'False'
+          BOTO_RETRY_OUTPUT: 'False'
+          CLOUDWATCH_METRICS: !FindInMap
+            - YesNoBoolean
+            - !Ref 'UseCloudWatchMetrics'
+            - Value
+          USE_ECS: !If
+            - UseEcs
+            - 'True'
+            - 'False'
+          ECS_CLUSTER: !If
+            - UseEcs
+            - !FindInMap
+              - Settings
+              - EcsCluster
+              - ClusterName
+            - !Ref 'AWS::NoValue'
+          ECS_OPS_AUTOMATOR_TASK: !If
+            - UseEcs
+            - !Ref 'OpsAutomatorTask'
+            - ''
+          DEBUG_TASK_TRACKING_HANDLER: 'False'
+          DEBUG_MAIN_EVENT_HANDLER: 'False'
+          DEBUG_EVENT_HANDLERS: 'False'
+          RESOURCE_ENCRYPTION_KEY: !If
+            - EncryptResourceData
+            - !Ref 'ResourceEncryptionKey'
+            - ''
+          SERVICE_LIMIT_CONCURRENT_EBS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentEbsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_RDS_SNAPSHOT_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentRdsSnapshotCopies
+          SERVICE_LIMIT_CONCURRENT_IMAGE_COPY: !FindInMap
+            - Settings
+            - ServiceLimits
+            - MaxConcurrentImageCopies
+          SOLUTION_ID: !FindInMap
+            - Settings
+            - Metrics
+            - SolutionId
+          METRICS_URL: !FindInMap
+            - Settings
+            - Metrics
+            - Url
+      MemorySize: '3008'
+      Timeout: 900
+      Description: Ops Automator (XXXLarge, Memory 3008 MB), version %version%
+    DependsOn:
+      - OpsAutomatorLambdaRole
 Outputs:
+  OpsAutomatorLambdaFunctionStandard:
+    Value: !Ref 'OpsAutomatorLambdaFunctionStandard'
+    Description: Name of Ops Automator lambda function
   LogGroup:
-    Value: !Ref 'SchedulerLogGroup'
-    Description: Name of the CloudWatch loggroup for the scheduler
+    Value: !Ref 'OpsAutomatorLogGroup'
+    Description: Name of the CloudWatch loggroup for Ops Automator stack
   ConfigurationBucketName:
     Value: !Ref 'Configuration'
-    Description: Name of bucket with generated CloufFormation templates for managing
+    Description: Name of bucket with generated CloudFormation templates for managing
       tasks and creating cross account roles and backups
+  ReportingBucketName:
+    Value: !Ref 'Reporting'
+    Description: Name of bucket for output reports of Ops Automator tasks
   IssueSNSTopic:
-    Value: !Ref 'SchedulerSnsTopic'
-    Description: Topic to subribe to for notifications of errors and warnings
+    Value: !Ref 'OpsAutomatorIssuesTopic'
+    Description: Topic to subscribe to for notifications of errors and warnings
+  NotificationsSNSTopic:
+    Value: !Ref 'OpsAutomatorNotificationsTopic'
+    Description: Topic to subscribe to for notifications of started and ended tasks
+  StackId:
+    Value: !Ref 'AWS::StackId'
+    Description: StackID
+  EventsForwardRoleParam:
+    Value: !GetAtt 'OpsAutomatorEventsForwardRole.Arn'
+    Description: Role for forwarding events from other regions
+  Repository:
+    Value: !If
+      - UseEcs
+      - !Sub
+        - ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${repository}
+        - repository: !Ref 'OpsAutomatorEcsRepository'
+      - ''

@@ -113,26 +113,24 @@ class RedshiftService(AwsService):
                             next_token_result=NEXT_TOKEN_RESULT,
                             service_retry_strategy=service_retry_strategy)
 
-    def _get_tags_for_resource(self, client, resource, resource_name):
+    def _get_tags_for_resource(self, client, resource):
         """
         Returns the tags for specific resources that require additional boto calls to retrieve their tags.
         :param client: Client that can be used to make the boto call to retrieve the tags
         :param resource: The resource for which to retrieve the tags
-        :param resource_name: Name of the resource type
         :return: Tags
         """
         arn_data = [client.meta.region_name, self.aws_account]
-        for i in RESOURCES_WITH_TAGS[resource_name][1:]:
+        for i in RESOURCES_WITH_TAGS[self._resource_name][1:]:
             arn_data.append(resource[i])
-        arn = RESOURCES_WITH_TAGS[resource_name][0].format(*arn_data)
+        arn = RESOURCES_WITH_TAGS[self._resource_name][0].format(*arn_data)
 
         resp = client.describe_tags(ResourceName=arn)
         return [t["Tag"] for t in resp.get("TaggedResources", [])]
 
-    def _get_tag_resource(self, resource_name):
+    def _get_tag_resource(self):
         """
         Returns the name of the resource to retrieve the tags for the resource of type specified by resource name
-        :param resource_name: Type name of the resource
         :return: Name of the resource that will be used to retrieve the tags
         """
         return TAGS
