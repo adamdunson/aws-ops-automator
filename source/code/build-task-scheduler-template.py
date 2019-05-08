@@ -12,11 +12,13 @@
 ######################################################################################################################
 
 import copy
-import json
 import re
 import sys
 import uuid
 from collections import OrderedDict
+
+from ruamel.yaml import YAML
+yaml = YAML()
 
 import actions
 import services
@@ -69,7 +71,7 @@ def get_versioned_template(template_filename, version, bucket):
         template_text = "".join(f.readlines())
         template_text = template_text.replace("%version%", version)
         template_text = template_text.replace("%bucket%", bucket)
-        return json.loads(template_text, object_pairs_hook=OrderedDict)
+        return yaml.load(template_text)
 
 
 def add_additional_lambda_functions(template, all_actions):
@@ -214,12 +216,12 @@ def add_action_stack_resources(template, all_actions):
 
 
 def main(template_file, version, bucket):
-    template = get_versioned_template(template_file, version,bucket)
+    template = get_versioned_template(template_file, version, bucket)
     all_actions = actions.all_actions()
     add_actions_permissions(template, all_actions)
     add_additional_lambda_functions(template, all_actions)
     add_action_stack_resources(template, all_actions)
-    print(json.dumps(template, indent=4))
+    yaml.dump(template, sys.stdout)
 
 
 main(template_file=sys.argv[1], version=sys.argv[2], bucket=sys.argv[3])

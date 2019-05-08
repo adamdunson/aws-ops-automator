@@ -71,8 +71,8 @@ class SetupHelperHandler(CustomResource):
     def __init__(self, event, context):
         """
         Initializes helper setup class
-        :param event: 
-        :param context: 
+        :param event:
+        :param context:
         """
         CustomResource.__init__(self, event, context)
 
@@ -102,7 +102,7 @@ class SetupHelperHandler(CustomResource):
     def handle_request(self):
         """
         Handles the custom resource request from cloudformation
-        :return: 
+        :return:
         """
 
         start = datetime.now()
@@ -127,8 +127,8 @@ class SetupHelperHandler(CustomResource):
 
     def _set_lambda_logs_retention_period(self):
         """
-        Aligns retention period for default Lambda logstreams with settings 
-        :return: 
+        Aligns retention period for default Lambda logstreams with settings
+        :return:
         """
 
         if self._context is None:
@@ -155,7 +155,7 @@ class SetupHelperHandler(CustomResource):
     def _setup(self):
         """
         SchedulerSetupHelper setup actions
-        :return: 
+        :return:
         """
         self._set_lambda_logs_retention_period()
         if self.configuration_bucket:
@@ -193,7 +193,7 @@ class SetupHelperHandler(CustomResource):
     def _create_request(self):
         """
         Handles create request from cloudformation custom resource
-        :return: 
+        :return:
         """
 
         try:
@@ -210,7 +210,7 @@ class SetupHelperHandler(CustomResource):
     def _update_request(self):
         """
         Handles update request from cloudformation custom resource
-        :return: 
+        :return:
         """
 
         try:
@@ -224,7 +224,7 @@ class SetupHelperHandler(CustomResource):
     def _delete_request(self):
         """
         Handles delete request from cloudformation custom resource
-        :return: 
+        :return:
         """
 
         try:
@@ -241,7 +241,7 @@ class SetupHelperHandler(CustomResource):
     def delete_external_task_config_stacks(self):
         """
         Deletes external stacks that were used to create configuration items
-        :return: 
+        :return:
         """
 
         self._logger.info(INF_DELETING_STACKS)
@@ -268,7 +268,7 @@ class SetupHelperHandler(CustomResource):
     def generate_templates(self):
         """
         Generates configuration and cross-account role templates
-        :return: 
+        :return:
         """
 
         def generate_configuration_template(s3, builder, action):
@@ -294,7 +294,7 @@ class SetupHelperHandler(CustomResource):
             account = AwsService.get_aws_account()
             stack = os.getenv(handlers.ENV_STACK_NAME, "")
             s3_client = get_client_with_retries("s3", ["put_object"], context=self.context)
-            config_template_builder = ActionTemplateBuilder(self.context, "arn:aws:region:account:function:debug-only")
+            config_template_builder = ActionTemplateBuilder(self.context, "arn:aws-us-gov:region:account:function:debug-only")
             role_template_builder = CrossAccountRoleBuilder(self.scheduler_role_arn)
 
             all_actions = []
@@ -315,7 +315,7 @@ class SetupHelperHandler(CustomResource):
     def delete_templates(self):
         """
         Deletes cross-account role and configuration templates
-        :return: 
+        :return:
         """
         s3_client = get_client_with_retries("s3", ["delete_object"], context=self.context)
         s3_key = ""

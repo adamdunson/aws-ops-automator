@@ -87,7 +87,7 @@ class DynamodbService(AwsService):
         if resource_name == TABLE:
             arn = resource["TableArn"]
         else:
-            arn = "arn:aws:dynamodb:{}:{}:table/{}".format(client.meta.region_name, self.aws_account,
+            arn = "arn:aws-us-gov:dynamodb:{}:{}:table/{}".format(client.meta.region_name, self.aws_account,
                                                            resource["TableName"])
         return client.list_tags_of_resource(ResourceArn=arn).get("Tags")
 

@@ -1,8 +1,8 @@
 ifndef bucket
-bucket = ops-automator-deploy
+bucket = mnp-devops
 endif
 
-s3bucket=s3://$(bucket)/
+s3bucket=s3://$(bucket)/ops-automator-deploy/
 
 pydirs= actions handlers scheduling services util configuration boto_retry
 py=$(foreach dir, $(pydirs), $(wildcard $(dir)/*.py))
@@ -35,11 +35,11 @@ cfn:version.txt $(templates)
 	cp $(zip) ../../deployment/ops-automator-$(version).zip
 
 deploy: build
-	aws s3 cp $(dest) $(s3bucket) --recursive --acl public-read
+	aws s3 cp $(dest) $(s3bucket) --recursive
 	python update-build-number.py version.txt
 
 clean:
-	rm $(dest)/*
+	rm -f $(dest)/*
 
 all: build deploy
 

@@ -76,7 +76,7 @@ RESOURCE_NAMES = [
     TAGS
 ]
 
-ARN_REDSHIFT = "arn:aws:redshift:{}:{}:"
+ARN_REDSHIFT = "arn:aws-us-gov:redshift:{}:{}:"
 
 RESOURCES_WITH_TAGS = {
     CLUSTER_PARAMETER_GROUPS: [ARN_REDSHIFT + "parametergroup:{}", "ParameterGroupName"],
