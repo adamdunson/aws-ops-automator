@@ -1,0 +1,4 @@
+deployment/
+source/deploy/
+*.zip
+*.pyc
