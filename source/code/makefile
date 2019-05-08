@@ -39,7 +39,7 @@ deploy: build
 	python update-build-number.py version.txt
 
 clean:
-	rm $(dest)/*
+	rm -f $(dest)/*
 
 all: build deploy
 
