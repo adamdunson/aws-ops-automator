@@ -46,9 +46,9 @@ cfn: version.txt $(templates)
 	cp $(zip) ../../deployment/ops-automator-$(version).zip
 	cp $(cwzip) ../../deployment/cloudwatch-handler-$(version).zip
 
+#	python update-build-number.py version.txt
 deploy: build
 	aws s3 cp $(dest) $(s3bucket) --recursive
-	python update-build-number.py version.txt
 
 clean:
 	rm -f $(dest)/*

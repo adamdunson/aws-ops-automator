@@ -246,9 +246,6 @@ Conditions:
     - !Equals
       - !Ref 'AWS::Region'
       - us-west-1
-    - !Equals
-      - !Ref 'AWS::Region'
-      - us-gov-west-1
   FifoQueue: !Or
     - !Equals
       - !Ref 'AWS::Region'
@@ -268,9 +265,6 @@ Conditions:
     - !Equals
       - !Ref 'AWS::Region'
       - us-west-2
-    - !Equals
-      - !Ref 'AWS::Region'
-      - us-gov-west-1
   NoFifoQueue: !Not
     - !Condition 'FifoQueue'
 Resources:
@@ -805,7 +799,9 @@ Resources:
       KeySchema:
         - AttributeName: Name
           KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
   ConfigurationTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -815,7 +811,9 @@ Resources:
       KeySchema:
         - AttributeName: Name
           KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 2
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
   TaskTrackingTable:
@@ -831,13 +829,15 @@ Resources:
       KeySchema:
         - AttributeName: Id
           KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
       TimeToLiveSpecification:
         AttributeName: TTL
         Enabled: !If
           - EnableTaskCleanupCondition
           - 'True'
           - 'False'
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
       GlobalSecondaryIndexes:
@@ -849,6 +849,9 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 2
+            WriteCapacityUnits: 2
         - IndexName: WaitForCompletionTasks
           KeySchema:
             - AttributeName: Id
@@ -857,6 +860,9 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 2
+            WriteCapacityUnits: 2
   ConcurrencyTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -866,7 +872,9 @@ Resources:
       KeySchema:
         - AttributeName: ConcurrencyId
           KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
+      ProvisionedThroughput:
+        ReadCapacityUnits: 2
+        WriteCapacityUnits: 2
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
   TriggerTable:
@@ -878,7 +886,9 @@ Resources:
       KeySchema:
         - AttributeName: Name
           KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
+      ProvisionedThroughput:
+        ReadCapacityUnits: 2
+        WriteCapacityUnits: 2
       StreamSpecification:
         StreamViewType: KEYS_ONLY
   OpsAutomatorLogGroup:
