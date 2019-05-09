@@ -919,7 +919,7 @@ Resources:
     Properties:
       Code:
         S3Bucket: %bucket%
-        S3Key: ops-automator-deploy/ops-automator-%version%.zip
+        S3Key: ops-automator/%version%/ops-automator-%version%.zip
       FunctionName: !Join
         - '-'
         - - !Ref 'AWS::StackName'
