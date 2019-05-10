@@ -110,11 +110,11 @@ class KmsService(AwsService):
                 if resource["AliasName"].startswith("alias/aws/"):
                     return {}
                 else:
-                    keyid = "TagetKeyId"
+                    keyid = "TargetKeyId"
             else:
-               keyid = "KeyId"
+                keyid = "KeyId"
             tags = list(self.describe(RESOURCE_TAGS, region=client.meta.region_name, tags_as_dict=False, KeyId=resource[keyid]))
-        except Exception as ex:
+        except:
             # if master keys tags cannot be retrieved, as we don't know  the ids catch exception and skip
             tags = []
         return [{"Key": t["TagKey"], "Value": t["TagValue"]} for t in tags]

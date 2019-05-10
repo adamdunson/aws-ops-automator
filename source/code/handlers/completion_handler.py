@@ -20,7 +20,7 @@ from handlers.task_tracking_table import TaskTrackingTable
 from util import safe_dict, safe_json
 from util.logger import Logger
 
-INF_COMPETION_ITEMS_SET = "Execution time was {}, {} items set fo completion check"
+INF_COMPLETION_ITEMS_SET = "Execution time was {}, {} items set fo completion check"
 INF_DISABLED_COMPLETION_TIMER = "Disabled CloudWatch Events Rule \"{}\" as there are no tasks waiting for completion"
 INF_SET_COMPLETION_TASK_TIMER = "Set new completion time for task {} ({}) to {}"
 
@@ -80,7 +80,6 @@ class CompletionHandler:
             tracking_table = TaskTrackingTable(context=self._context)
 
             for task in tracking_table.get_tasks_to_check_for_completion():
-
                 count += 1
 
                 task_id = task[tracking.TASK_TR_ID]
@@ -89,16 +88,15 @@ class CompletionHandler:
                     tracking.TASK_TR_LAST_WAIT_COMPLETION: last_check_for_completion_time
                 })
 
-                self._logger.info(INF_SET_COMPLETION_TASK_TIMER, task[tracking.TASK_TR_NAME],
+                self._logger.info(INF_SET_COMPLETION_TASK_TIMER, task.get(tracking.TASK_TR_NAME, ""),
                                   task_id, last_check_for_completion_time)
 
             running_time = float((datetime.now() - start).total_seconds())
-            self._logger.info(INF_COMPETION_ITEMS_SET, running_time, count)
+            self._logger.info(INF_COMPLETION_ITEMS_SET, running_time, count)
 
             if count == 0:
                 rule = handlers.disable_completion_cloudwatch_rule(self._context)
                 self._logger.info(INF_DISABLED_COMPLETION_TIMER, rule)
-
 
             return safe_dict({
                 "datetime": datetime.now().isoformat(),

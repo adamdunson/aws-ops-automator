@@ -26,7 +26,7 @@ class SchedulerTaskCleanupAction:
 
         ACTION_TITLE: "Scheduler Task Cleanup",
         ACTION_VERSION: "1.0",
-        ACTION_DESCRIPION: "Deletes old entries from task tracking table",
+        ACTION_DESCRIPTION: "Deletes old entries from task tracking table",
         ACTION_AUTHOR: "AWS",
         ACTION_ID: "6f0ac9ab-b0ea-4922-b674-253499dee6a2",
 
@@ -64,7 +64,7 @@ class SchedulerTaskCleanupAction:
         self.task_table = os.getenv(handlers.ENV_ACTION_TRACKING_TABLE, None)
         if self.task_table is None:
             raise Exception("Task tracking table not defined in environment variable {}".format(handlers.ENV_ACTION_TRACKING_TABLE))
-        self.task_retenion_seconds = int(arguments[PARAM_TASK_RETENTION_HOURS] * 3600)
+        self.task_retention_seconds = int(arguments[PARAM_TASK_RETENTION_HOURS] * 3600)
         self.retain_failed_tasks = arguments[PARAM_RETAIN_FAILED_TASKS]
         self.session = arguments[actions.ACTION_PARAM_SESSION]
         self.dryrun = arguments.get(actions.ACTION_PARAM_DRYRUN, False)
@@ -82,7 +82,7 @@ class SchedulerTaskCleanupAction:
 
         # calculate moment from when entries can be deleted
 
-        delete_before = int(time()) - self.task_retenion_seconds
+        delete_before = int(time()) - self.task_retention_seconds
         self.logger.info("Deleting tasks older than {}", datetime.fromtimestamp(delete_before).isoformat())
 
         #  status of deleted items for scan expression

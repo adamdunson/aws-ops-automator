@@ -23,7 +23,7 @@ import boto_retry
 from boto_retry import get_client_with_retries
 from util.named_tuple_builder import as_namedtuple
 
-ERR_UNEXPECTED_MULIPLE_RESULTS = "Requested a single resource result but there are multiple resources in the result"
+ERR_UNEXPECTED_MULTIPLE_RESULTS = "Requested a single resource result but there are multiple resources in the result"
 ERR_NO_BOTO_SERVICE_METHOD = "Service client for service \"{}\" has no method named \"{}\""
 
 DEFAULT_NEXT_TOKEN = "NextToken"
@@ -169,7 +169,7 @@ class AwsService:
         Returns all regions in which a service is available
         :return:  all regions in which the service is available
         """
-        return boto3.Session().get_available_regions(service_name=self.service_name)
+        return boto3.Session().get_available_regions(service_name=self.service_name, partition_name='aws-us-gov')
 
     def service_client(self, region=None, method_names=None):
         """
@@ -405,7 +405,7 @@ class AwsService:
             for t in self._converted_tags:
                 if t in result:
                     tags = result.get(t, []) or []
-                    result[t] = {tag["Key"]: tag["Value"] for tag in tags}
+                    result[t] = {tag.get("Key","").strip(): tag.get("Value","").strip() for tag in tags}
             return result
         return resource
 
@@ -569,7 +569,7 @@ class AwsService:
             try:
                 # if there is more than one result, raise Exception
                 results.next()
-                raise Exception(ERR_UNEXPECTED_MULIPLE_RESULTS)
+                raise Exception(ERR_UNEXPECTED_MULTIPLE_RESULTS)
             except StopIteration:
                 # Expected exception as there should be only one result
                 return result

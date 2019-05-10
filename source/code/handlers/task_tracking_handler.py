@@ -33,16 +33,20 @@ ACTIVE_INSTANCES = "InstanceCount"
 CONCURRENCY_ID = tracking.TASK_TR_CONCURRENCY_ID
 
 NEW_TASK = 0
-FINISHED_CONCURRENY_TASK = 1
+FINISHED_CONCURRENCY_TASK = 1
 CHECK_COMPLETION = 2
+DELETE_ITEM = 3
+
+WARN_DELETING_RESOURCES = "Error deleting resources from bucket {} with key {}"
 
 DEBUG_ACTION = "Action is \"{}\" for task \"{}\", task-id is {}"
 DEBUG_DRYRUN = "Action will be executed in in dry-run mode"
 DEBUG_LAMBDA = "Lambda function invoked {}"
 DEBUG_ACTION_PARAMETERS = "Action parameters are {}"
+DEBUG_DELETING_RESOURCES_FROM_S3 = "Deleting resource object {} from bucket {}, {}"
 
 INFO_NUMBER_OF_EXECUTING = "{} action item{} dispatched for execution"
-INFO_NUMBER_OF_WAIING = "{} action item{} put in waiting state"
+INFO_NUMBER_OF_WAITING = "{} action item{} put in waiting state"
 INFO_RESULT = "Handling actions tracking update took {:>.3f} seconds"
 INFO_MEMORY_SIZE = "Task memory size for lambda is {} MB"
 INFO_LAMBDA_FUNCTION_ = "Executing action with Lambda function {}, payload is {}"
@@ -51,7 +55,7 @@ INFO_WAITING = "The waiting list for action \"{}\" with concurrency key \"{}\" i
                "running actions for this key is {}, action with id \"{}\" has been put in waiting state"
 
 LOG_STREAM = "{}-{:0>4d}{:0>2d}{:0>2d}"
-SCHEDULER_LAMBDA_FUNTION_DEFAULT = "SchedulerDefault"
+SCHEDULER_LAMBDA_FUNCTION_DEFAULT = "SchedulerDefault"
 SIZED_SCHEDULER_NAME_TEMPLATE = "Scheduler{:0>04d}"
 
 
@@ -79,12 +83,13 @@ class TaskTrackingHandler:
         self.invoked_lambda_functions = []
 
         self.events_client = None
+        self._s3_client = None
 
         # setup logging
         classname = self.__class__.__name__
         dt = datetime.utcnow()
         logstream = LOG_STREAM.format(classname, dt.year, dt.month, dt.day)
-        self._logger = Logger(logstream=logstream, context=self._context, buffersize=20, debug=False)
+        self._logger = Logger(logstream=logstream, context=self._context, buffersize=20, debug=True)
 
     @staticmethod
     def is_handling_request(event):
@@ -111,6 +116,13 @@ class TaskTrackingHandler:
             self._tracking_table = TaskTrackingTable(self._context)
         return self._tracking_table
 
+    @property
+    def s3_client(self):
+
+        if self._s3_client is None:
+            self._s3_client = boto_retry.get_client_with_retries("s3", ["delete_object"])
+        return self._s3_client
+
     @staticmethod
     def _get_action_concurrency_key(item):
         """
@@ -121,7 +133,7 @@ class TaskTrackingHandler:
         action = item[tracking.TASK_TR_ACTION]
         # get the name of the optional method to return the concurrency key
         action_class = actions.get_action_class(action)
-        concurrency_key_method = getattr(action_class, actions.ACTION_CONCURRERNCY_KEY_METHOD, None)
+        concurrency_key_method = getattr(action_class, actions.ACTION_CONCURRENCY_KEY_METHOD, None)
 
         # prepare parameters for calling static function that returns the concurrency key
         if concurrency_key_method is not None:
@@ -267,7 +279,7 @@ class TaskTrackingHandler:
 
                 # based on the memory requirements determine the lambda function to use
                 if action_memory_size is not None and action_memory_size != actions.LAMBDA_DEFAULT_MEMORY:
-                    lambda_name = lambda_name.replace(SCHEDULER_LAMBDA_FUNTION_DEFAULT,
+                    lambda_name = lambda_name.replace(SCHEDULER_LAMBDA_FUNCTION_DEFAULT,
                                                       SIZED_SCHEDULER_NAME_TEMPLATE.format(action_memory_size))
 
                 self._logger.info(INFO_LAMBDA_FUNCTION_, lambda_name, payload)
@@ -349,6 +361,18 @@ class TaskTrackingHandler:
         self.started_completion_checks += 1
         self._start_task_execution(task_item=task_item, action=handlers.HANDLER_ACTION_TEST_COMPLETION)
 
+    def _handle_deleted_item(self, task_item):
+
+        if task_item.get(tracking.TASK_TR_S3_RESOURCES, False):
+
+            bucket = os.getenv(handlers.ENV_RESOURCE_BUCKET)
+            key = task_item[tracking.TASK_TR_ID] + ".json"
+            try:
+                self._logger.debug(DEBUG_DELETING_RESOURCES_FROM_S3, bucket, key)
+                self.s3_client.delete_object_with_retries(Bucket=bucket, Key=key)
+            except Exception as ex:
+                self._logger.warning(WARN_DELETING_RESOURCES, bucket, key, ex)
+
     def handle_request(self):
         """
         Handles the event triggered by updates to the actions tracking table.
@@ -360,6 +384,9 @@ class TaskTrackingHandler:
             Generator function that selects all record items from the event that need processing.
             :return:
             """
+
+            def is_delete_item(task_record):
+                return task_record["eventName"] == "REMOVE"
 
             def is_new_action(task_record):
                 if task_record["eventName"] == "INSERT":
@@ -398,9 +425,11 @@ class TaskTrackingHandler:
                     if is_new_action(record):
                         update_to_handle = NEW_TASK
                     elif is_completed_with_concurrency(record):
-                        update_to_handle = FINISHED_CONCURRENY_TASK
+                        update_to_handle = FINISHED_CONCURRENCY_TASK
                     elif is_wait_for_completion(record):
                         update_to_handle = CHECK_COMPLETION
+                    elif is_delete_item(record):
+                        update_to_handle = DELETE_ITEM
 
                     if update_to_handle is not None:
                         yield update_to_handle, record
@@ -423,7 +452,7 @@ class TaskTrackingHandler:
 
                 if task_tracking_update_type == NEW_TASK:
                     self._handle_new_task_item(task_item)
-                elif task_tracking_update_type == FINISHED_CONCURRENY_TASK:
+                elif task_tracking_update_type == FINISHED_CONCURRENCY_TASK:
                     self._handle_completed_concurrency_item(task_item)
                 elif task_tracking_update_type == CHECK_COMPLETION:
                     self._handle_check_completion(task_item)

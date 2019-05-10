@@ -11,7 +11,6 @@
 #  and limitations under the License.                                                                                #
 ######################################################################################################################
 import random
-import sys
 import types
 
 import boto3
@@ -21,10 +20,10 @@ from .dynamodb_service_retry import DynamoDbServiceRetry
 from .ec2_service_retry import Ec2ServiceRetry
 
 DEFAULT_SUFFIX = "_with_retries"
-DEFAULT_WAIT_SECONDS = 5
-DEFAULT_INCR_SECONDS = 5
-DEFAUL_MAX_WAIT = 30
-DEFAULT_RANDOM_FACTOR = 0.2
+DEFAULT_WAIT_SECONDS = 10
+DEFAULT_INCR_SECONDS = 10
+DEFAULT_MAX_WAIT = 30
+DEFAULT_RANDOM_FACTOR = 0.25
 
 MAX_WAIT = 24 * 3600
 
@@ -65,7 +64,7 @@ def get_default_wait_strategy(_):
     :param _: Not used, placeholder for making default strategy specific for each service
     :return: Default wait strategy
     """
-    return LinearWaitStrategy(start=DEFAULT_WAIT_SECONDS, incr=DEFAULT_INCR_SECONDS, max_wait=DEFAUL_MAX_WAIT,
+    return LinearWaitStrategy(start=DEFAULT_WAIT_SECONDS, incr=DEFAULT_INCR_SECONDS, max_wait=DEFAULT_MAX_WAIT,
                               random_factor=DEFAULT_RANDOM_FACTOR)
 
 

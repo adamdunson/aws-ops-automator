@@ -44,7 +44,6 @@ PARAM_DESCRIPTION = "Description"
 # label or identifier for parameter
 PARAM_LABEL = "Label"
 
-
 # permissions on stack owned resources
 ACTION_STACK_RESOURCES_PERMISSIONS = "StackResourcePermissions"
 # action parameters, dictionary holding keys PARAM_* (see constants above), dictionary
@@ -66,7 +65,7 @@ ACTION_MEMORY = "Memory"
 # action version, string
 ACTION_VERSION = "Version"
 # action description, string
-ACTION_DESCRIPION = "Description"
+ACTION_DESCRIPTION = "Description"
 # action author, string
 ACTION_AUTHOR = "Author"
 # action title, string
@@ -112,7 +111,7 @@ ACTION_PARAM_ACTION_ID = "action-id"
 # optional static method for actions to perform additional parameter checking
 ACTION_VALIDATE_PARAMETERS_METHOD = "action_validate_parameters"
 # optional static method for actions that require concurrency control
-ACTION_CONCURRERNCY_KEY_METHOD = "action_concurrency_key"
+ACTION_CONCURRENCY_KEY_METHOD = "action_concurrency_key"
 
 # grouping for action parameters in UI's
 ACTION_PARAMETER_GROUPS = "ParameterGroups"
@@ -236,6 +235,7 @@ def get_action_properties(action_name):
     properties[ACTION_CLASS_NAME] = action_class.__name__
     return properties
 
+
 def build_action_metrics(action, **data):
     """
     Builds action metrics data
@@ -254,4 +254,3 @@ def build_action_metrics(action, **data):
         metrics["Data"][d] = data[d]
 
     return metrics
-

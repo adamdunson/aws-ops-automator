@@ -50,7 +50,7 @@ class DynamodbSetCapacityAction:
 
         ACTION_TITLE: "DynamoDB set capacity",
         ACTION_VERSION: "1.0",
-        ACTION_DESCRIPION: "Sets the read and write capacity for a DynamoDB table and it's global secondary indexes",
+        ACTION_DESCRIPTION: "Sets the read and write capacity for a DynamoDB table and it's global secondary indexes",
         ACTION_AUTHOR: "AWS",
         ACTION_ID: "66010073-a4fb-414a-87d9-2b33f6a20108",
 

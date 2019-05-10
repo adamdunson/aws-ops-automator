@@ -26,6 +26,7 @@ import main
 from boto_retry import add_retry_methods_to_resource, get_client_with_retries
 from services.aws_service import AwsService
 from util import safe_json
+import boto_retry
 
 # name of environment variable that hold the dynamodb action table
 TASK_TR_ACCOUNT = "Account"
@@ -57,6 +58,7 @@ TASK_TR_CONCURRENCY_ID = "ConcurrencyId"
 TASK_TR_CONCURRENCY_KEY = "ConcurrencyKey"
 TASK_TR_LAST_WAIT_COMPLETION = "LastCompletionCheck"
 TASK_TR_EXECUTION_LOGSTREAM = "LogStream"
+TASK_TR_S3_RESOURCES = "S3Resources"
 
 STATUS_PENDING = "pending"
 STATUS_STARTED = "started"
@@ -67,6 +69,7 @@ STATUS_FAILED = "failed"
 STATUS_WAITING = "wait-for-exec"
 
 ITEMS_NOT_WRITTEN = "Items can not be written to action table, items not writen are {}, ({})"
+ERR_WRITING_RESOURCES = "Error writing resources to bucket {}, key {} for action {}, {}"
 
 class TaskTrackingTable:
     """
@@ -81,6 +84,7 @@ class TaskTrackingTable:
         self._client = None
         self._new_action_items = []
         self._context = context
+        self._s3_client = None
 
     def __enter__(self):
         """
@@ -98,6 +102,12 @@ class TaskTrackingTable:
         :return:
         """
         self.flush()
+
+    @property
+    def s3_client(self):
+        if self._s3_client is None:
+            self._s3_client = boto_retry.get_client_with_retries("s3", ["put_object"], context=self._context)
+        return self._s3_client
 
     def add_task_action(self, task, assumed_role, action_resources, task_datetime, source):
         """
@@ -120,12 +130,11 @@ class TaskTrackingTable:
             TASK_TR_CREATED_TS: int(time()),
             TASK_TR_SOURCE: source,
             TASK_TR_DT: task_datetime,
-            TASK_TR_RESOURCES: safe_json(action_resources),
             TASK_TR_STATUS: STATUS_PENDING,
             TASK_TR_DEBUG: task[handlers.TASK_DEBUG],
             TASK_TR_DRYRUN: task[handlers.TASK_DRYRUN],
             TASK_TR_INTERNAL: task[handlers.TASK_INTERNAL],
-            TASK_TR_TIMEOUT: task[handlers.TASK_TIMOUT]
+            TASK_TR_TIMEOUT: task[handlers.TASK_TIMEOUT]
         }
         if assumed_role is not None:
             item[TASK_TR_ASSUMED_ROLE] = assumed_role
@@ -138,6 +147,21 @@ class TaskTrackingTable:
 
         if item[TASK_TR_PARAMETERS]:
             item[TASK_TR_PARAMETERS] = safe_json(item[TASK_TR_PARAMETERS])
+
+        resource_data = safe_json(action_resources)
+
+        if len(resource_data) < int(os.getenv(handlers.ENV_RESOURCE_TO_S3_SIZE, 16)) * 1024:
+            item[TASK_TR_RESOURCES] = resource_data
+        else:
+            bucket = os.getenv(handlers.ENV_RESOURCE_BUCKET)
+            key = "{}.json".format(item[TASK_TR_ID])
+
+            try:
+                self.s3_client.put_object_with_retries(Body=resource_data, Bucket=bucket, Key=key)
+            except Exception as ex:
+                raise Exception(ERR_WRITING_RESOURCES.format(bucket, key, item[TASK_TR_ID], ex))
+            item[TASK_TR_S3_RESOURCES] = True
+
 
         self._new_action_items.append(item)
         return item
@@ -212,7 +236,7 @@ class TaskTrackingTable:
                     has_failed_items_to_retry = has_failed_items_to_retry or len(unprocessed_items) > 0
                     for unprocessed_item in unprocessed_items:
                         has_failed_items_to_retry = True
-                        items_to_write.append(unprocessed_item)
+                        items_to_write += unprocessed_items[unprocessed_item]
                     batch_write_items = []
             except Exception as ex:
                 # when there are items that are retried to write check for timeout in loop

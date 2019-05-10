@@ -21,11 +21,11 @@ from boto_retry import get_client_with_retries, get_default_retry_strategy
 from util import safe_json
 from util.tag_filter_set import TagFilterSet
 
-SNAPHOT_STATE_ERROR = "error"
+SNAPSHOT_STATE_ERROR = "error"
 SNAPSHOT_STATE_PENDING = "pending"
 SNAPSHOT_STATE_COMPLETED = "completed"
 
-GROUP_TITLE_SNAPHOT_OPTIONS = "Snapshot volume options"
+GROUP_TITLE_SNAPSHOT_OPTIONS = "Snapshot volume options"
 GROUP_TITLE_TAGGING_NAMING = "Tagging and naming options"
 
 PARAM_DESC_BACKUP_DATA_VOLUMES = "Create snapshots of EC2 instance data volumes"
@@ -57,8 +57,11 @@ INFO_SNAPSHOT_NAME = "Name of the snapshot will be set to {}"
 INFO_START_SNAPSHOT_ACTION = "Creating snapshot for EC2 instance {} for task {}"
 INFO_STATE_SNAPSHOTS = "State of created snapshot(s) is {}"
 INFO_TAGS_CREATED = "Snapshots tags created"
+INFO_NOT_ALL_IN_PROGRESS = "Not all snapshots have been created or are in progress yet"
 
 ERR_FAILED_SNAPSHOT = "Error creating snapshot {} for volume {}"
+
+WARN_ROOT_NOT_FOUND = "Root device for instance {} not backed up as it could not be found. devices are {}."
 
 SNAPSHOT_DESCRIPTION = "Snapshot created by task {} for {}volume {} (device {}) of instance {}"
 
@@ -75,7 +78,7 @@ class Ec2CreateSnapshotAction:
     properties = {
         ACTION_TITLE: "EC2 Create Snapshot",
         ACTION_VERSION: "1.1",
-        ACTION_DESCRIPION: "Creates snapshot for EC2 Instance",
+        ACTION_DESCRIPTION: "Creates snapshot for EC2 Instance",
         ACTION_AUTHOR: "AWS",
         ACTION_ID: "444f070b-9302-4e67-989a-23e224518e87",
 
@@ -140,7 +143,7 @@ class Ec2CreateSnapshotAction:
 
         ACTION_PARAMETER_GROUPS: [
             {
-                ACTION_PARAMETER_GROUP_TITLE: GROUP_TITLE_SNAPHOT_OPTIONS,
+                ACTION_PARAMETER_GROUP_TITLE: GROUP_TITLE_SNAPSHOT_OPTIONS,
                 ACTION_PARAMETER_GROUP_LIST: [
                     PARAM_BACKUP_ROOT_DEVICE,
                     PARAM_BACKUP_DATA_DEVICES
@@ -160,6 +163,7 @@ class Ec2CreateSnapshotAction:
         ACTION_PERMISSIONS: ["ec2:CreateSnapshot",
                              "ec2:DescribeTags",
                              "ec2:DescribeInstances",
+                             "ec2:DescribeSnapshots",
                              "ec2:CreateTags"],
 
     }
@@ -181,7 +185,12 @@ class Ec2CreateSnapshotAction:
         self.instance_tags = self.instance.get("Tags", {})
 
         self.volumes = {dev["Ebs"]["VolumeId"]: dev["DeviceName"] for dev in self.instance["BlockDeviceMappings"]}
-        self.root_volume = [dev for dev in self.volumes if self.volumes[dev] == self.instance["RootDeviceName"]][0]
+
+        self.root_volume = None
+        for dev in self.volumes:
+            if self.volumes[dev] == self.instance["RootDeviceName"]:
+                self.root_volume = dev
+                break
 
         self.copied_instance_tagfilter = TagFilterSet(self._arguments.get(PARAM_COPIED_INSTANCE_TAGS, ""))
         self.copied_volume_tagfiter = TagFilterSet(self._arguments.get(PARAM_COPIED_VOLUME_TAGS, ""))
@@ -196,8 +205,10 @@ class Ec2CreateSnapshotAction:
         for tag in self._arguments.get(PARAM_SNAPSHOT_TAGS, "").split(","):
             if "=" in tag:
                 t = tag.partition("=")
-                self.snapshot_tags[t[0]] = t[2]
-                lastkey = t[0]
+                key = t[0].strip()
+                value = t[2].strip()
+                self.snapshot_tags[key] = value
+                lastkey = key
             elif lastkey is not None:
                 self.snapshot_tags[lastkey] = ",".join([self.snapshot_tags[lastkey], tag])
 
@@ -218,7 +229,8 @@ class Ec2CreateSnapshotAction:
                        "describe_tags",
                        "describe_instances",
                        "create_tags"]
-            self._ec2_client = get_client_with_retries("ec2", methods, region=self.instance["Region"], session=self.session)
+            self._ec2_client = get_client_with_retries("ec2", methods, region=self.instance["Region"],
+                                                       session=self.session)
 
         return self._ec2_client
 
@@ -265,10 +277,12 @@ class Ec2CreateSnapshotAction:
         device = self.volumes[volume]
         self.result[volume] = {"device": device}
 
-        description = SNAPSHOT_DESCRIPTION.format(self.task, "root " if volume == self.root_volume else "", volume, device,
+        description = SNAPSHOT_DESCRIPTION.format(self.task, "root " if volume == self.root_volume else "", volume,
+                                                  device,
                                                   self.instance_id)
 
-        self.logger.info(INFO_CREATE_SNAPSHOT, volume, "root " if volume == self.root_volume else "", device, self.instance_id)
+        self.logger.info(INFO_CREATE_SNAPSHOT, volume, "root " if volume == self.root_volume else "", device,
+                         self.instance_id)
 
         snapshot = ""
         try:
@@ -299,9 +313,10 @@ class Ec2CreateSnapshotAction:
 
             self.logger.info(INFO_CREATE_TAGS, tags)
             snapshot_tags = [{"Key": t, "Value": tags[t]} for t in tags]
-            create_tags_resp = self.ec2_client.create_tags_with_retries(DryRun=self.dryrun, Tags=snapshot_tags,
-                                                                        Resources=[snapshot])
-            self.result["volumes"][volume]["create_tags"] = create_tags_resp
+            if len(snapshot_tags) > 0:
+                create_tags_resp = self.ec2_client.create_tags_with_retries(DryRun=self.dryrun, Tags=snapshot_tags,
+                                                                            Resources=[snapshot])
+                self.result["volumes"][volume]["create_tags"] = create_tags_resp
             self.logger.info(INFO_TAGS_CREATED)
         except Exception as ex:
             if self.dryrun:
@@ -334,7 +349,12 @@ class Ec2CreateSnapshotAction:
                                       service_retry_strategy=get_default_retry_strategy("ec2", context=self.context))
 
         # test if the snapshot with the ids that were returned from the CreateSnapshot API call exists and are completed
-        snapshots = ec2.describe("Snapshots", OwnerIds=["self"], Filters=[{"Name": "snapshot-id", "Values": snapshot_ids}])
+        snapshots = list(ec2.describe("Snapshots", OwnerIds=["self"], region=self.instance["Region"],
+                                      Filters=[{"Name": "snapshot-id", "Values": snapshot_ids}]))
+
+        if len(snapshots) != len(snapshot_ids):
+            self.logger.info(INFO_NOT_ALL_IN_PROGRESS)
+            return None
 
         test_result = {
             "InstanceId": snapshot_create_data["instance"],
@@ -357,7 +377,7 @@ class Ec2CreateSnapshotAction:
         # collect possible failed snapshots
         failed = []
         for volume in test_result["Volumes"]:
-            if volume["State"] == SNAPHOT_STATE_ERROR:
+            if volume["State"] == SNAPSHOT_STATE_ERROR:
                 failed.append(volume)
 
         if len(failed) > 0:
@@ -371,10 +391,13 @@ class Ec2CreateSnapshotAction:
         self.logger.info("{}, version {}", self.properties[ACTION_TITLE], self.properties[ACTION_VERSION])
 
         self.logger.info(INFO_START_SNAPSHOT_ACTION, self.instance_id, self.task)
-        self.logger.debug("Instance block device mappings are {}", self.instance["BlockDeviceMappings"])
+        self.logger.debug("Instance block device mappings are {}", self.instance.get("BlockDeviceMappings", []))
 
         if self.backup_root_device:
-            self.create_volume_snapshot(self.root_volume)
+            if self.root_volume is None:
+                self.logger.warning(WARN_ROOT_NOT_FOUND, self.instance_id, ",".join(self.volumes))
+            else:
+                self.create_volume_snapshot(self.root_volume)
 
         if self.backup_data_devices:
             for volume in self.volumes:

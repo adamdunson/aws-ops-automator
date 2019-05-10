@@ -408,8 +408,7 @@ class SetBuilder:
                 skip_to_next_value = step
         return result
 
-    @staticmethod
-    def _get_increment(incr_str, fn):
+    def _get_increment(self, incr_str, fn):
         # returns a set of values using a start value and a increment
         temp = incr_str.split(SetBuilder.INCREMENT_CHARACTER)
         # check if there is an increment character and if the increment value is present and valid
@@ -422,6 +421,8 @@ class SetBuilder:
             if incr <= 0:
                 raise ValueError("Increment value must be > 0 ({})".format(incr))
 
+            if temp[0] in SetBuilder.WILDCARD_ALL:
+                temp[0] = str(self._min_value)
             return fn(temp[0], incr)
         return None
 

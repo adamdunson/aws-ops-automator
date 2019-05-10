@@ -22,7 +22,7 @@ from boto_retry import get_client_with_retries
 
 INFO_REVOKE_ACCESS = "Revoking restore access for account {}"
 
-INFO_DELETE_SNAPHOT = "Deleting snapshot {} for cluster {}"
+INFO_DELETE_SNAPSHOT = "Deleting snapshot {} for cluster {}"
 
 GROUP_TITLE_DELETE_OPTIONS = "Snapshot delete options"
 
@@ -51,7 +51,7 @@ class RedshiftDeleteSnapshotAction:
     properties = {
         ACTION_TITLE: "RedShift Delete Snapshot",
         ACTION_VERSION: "1.0",
-        ACTION_DESCRIPION: "Deletes Redshift snapshots after retention period or count",
+        ACTION_DESCRIPTION: "Deletes Redshift snapshots after retention period or count",
         ACTION_AUTHOR: "AWS",
         ACTION_ID: "2fb2442c-b847-4dab-b53e-e481e029cc30f",
 
@@ -199,7 +199,7 @@ class RedshiftDeleteSnapshotAction:
                 if granted_accounts is None:
                     granted_accounts = []
 
-                self.logger.info(INFO_DELETE_SNAPHOT, snapshot_id, cluster_id)
+                self.logger.info(INFO_DELETE_SNAPSHOT, snapshot_id, cluster_id)
                 for account in granted_accounts:
                     self.logger.info(INFO_REVOKE_ACCESS, account)
                     redshift.revoke_snapshot_access_with_retries(SnapshotIdentifier=snapshot_id,

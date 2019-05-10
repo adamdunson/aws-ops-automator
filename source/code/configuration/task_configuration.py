@@ -40,10 +40,10 @@ MSG_BAD_REGION = "Region \"{}\" is not a valid region for service \"{}\", availa
 MSG_EVENT_SERVICE_NOT_ACTION_SERVICE = "Service \"{}\" for action {} does not match service \"{}\" for event {}"
 MSG_INVALID_ACTION_NAME = "Action with name \"{}\" does not exist, available actions are {}"
 MSG_INVALID_BOOL = "\"{}\" is not a valid boolean value"
-MSG_IVALID_TASK_INTERVAL = "Interval cron expression \"{}\" for task {} must have 5 fields"
+MSG_INVALID_TASK_INTERVAL = "Interval cron expression \"{}\" for task {} must have 5 fields"
 MSG_NO_TAG_FILTER = "Resource type \"{}\" for task does not support tags, tag-filer \"{}\" not allowed for action \"{}\""
 MSG_NO_TASK_ACTION_NAME = "Action name not specified"
-MSG_NO_WILDCARS_TAG_FILTER_ALLOWED = "Tag wildcard filter \"{}\" is not allowed for name of tag in tagfilter for action \"{}\""
+MSG_NO_WILDCARDS_TAG_FILTER_ALLOWED = "Tag wildcard filter \"{}\" is not allowed for name of tag in tagfilter for action \"{}\""
 
 WARN_NOT_REGIONAL_SERVICE = "One or more regions ({}) are specified but service \"{}\" or action {} is not a regional service"
 WARN_OVERLAPPING_ROLES = "Account {} in cross account role \"{}\" is overlapping with account other role or scheduler account"
@@ -182,7 +182,7 @@ class TaskConfiguration:
 
     def _warn(self, msg, *args):
         if self._logger:
-            self._logger.warn(msg, *args)
+            self._logger.warning(msg, *args)
         else:
             print(msg.format(*args))
 
@@ -329,7 +329,7 @@ class TaskConfiguration:
         # destructive actions can deny use of wildcards for tag name
         if not action_properties.get(actions.ACTION_ALLOW_TAGFILTER_WILDCARD, True):
             if "".join([s.strip() for s in tag_filter.split("=")[0:1]]) in ["*", "**", "*="]:
-                raise ValueError(MSG_NO_WILDCARS_TAG_FILTER_ALLOWED.format(tag_filter, action_name))
+                raise ValueError(MSG_NO_WILDCARDS_TAG_FILTER_ALLOWED.format(tag_filter, action_name))
 
         return tag_filter
 
@@ -617,8 +617,8 @@ class TaskConfiguration:
 
                 handlers.TASK_TIMEZONE: self.verified_timezone(tz_name=item.get(configuration.CONFIG_TIMEZONE, DEFAULT_TIMEZONE)),
 
-                handlers.TASK_TIMOUT: self.verify_timeout(action_name=action_name,
-                                                          timeout=item.get(configuration.CONFIG_TASK_TIMEOUT)),
+                handlers.TASK_TIMEOUT: self.verify_timeout(action_name=action_name,
+                                                           timeout=item.get(configuration.CONFIG_TASK_TIMEOUT)),
 
                 handlers.TASK_TAG_FILTER: TaskConfiguration.validate_tagfilter(tag_filter=item.get(configuration.CONFIG_TAG_FILTER),
                                                                                action_name=action_name),
@@ -630,7 +630,7 @@ class TaskConfiguration:
 
                 handlers.TASK_CROSS_ACCOUNT_ROLES: self.verify_cross_account_roles(account, cross_account_roles, action_name),
 
-                handlers.TASK_DESRIPTION: item.get(configuration.CONFIG_DESCRIPTION),
+                handlers.TASK_DESCRIPTION: item.get(configuration.CONFIG_DESCRIPTION),
 
                 handlers.TASK_PARAMETERS: TaskConfiguration.verify_task_parameters(
                     task_parameters=item.get(configuration.CONFIG_PARAMETERS, {}), action_name=action_name)

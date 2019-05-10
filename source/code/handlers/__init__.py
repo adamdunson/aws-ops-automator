@@ -45,6 +45,11 @@ ENV_STACK_ID = "STACK_ID"
 ENV_RULE_SCHEDULING = "SCHEDULER_RULE"
 # name of the cloudwatch rule that triggers the scheduler for checking task completion
 ENV_RULE_COMPLETION = "COMPLETION_RULE"
+# name of resource bucket
+ENV_RESOURCE_BUCKET = "RESOURCE_BUCKET"
+# max size for resource before storing them into S3
+ENV_RESOURCE_TO_S3_SIZE = "RESOURCE_TO_S3_SIZE"
+
 
 # Default tag for resource tasks
 DFLT_SCHEDULER_TAG = "AutomationTasks"
@@ -53,7 +58,7 @@ DFLT_SCHEDULER_TAG = "AutomationTasks"
 TASK_ACTION = "action"
 TASK_CROSS_ACCOUNT_ROLES = "cross_account_roles"
 TASK_DEBUG = "debug"
-TASK_DESRIPTION = "description"
+TASK_DESCRIPTION = "description"
 TASK_DRYRUN = "dryrun"
 TASK_ENABLED = "enabled"
 TASK_EVENTS = "events"
@@ -65,7 +70,7 @@ TASK_REGIONS = "regions"
 TASK_TAG_FILTER = "tag_filter"
 TASK_THIS_ACCOUNT = "this_account"
 TASK_TIMEZONE = "timezone"
-TASK_TIMOUT = "timeout"
+TASK_TIMEOUT = "timeout"
 
 HANDLER_EVENT_ACTION = "action"
 HANDLER_ACTION_EXECUTE = "execute-action"

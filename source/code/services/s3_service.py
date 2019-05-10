@@ -14,7 +14,7 @@
 from services.aws_service import AwsService
 from util.named_tuple_builder import as_namedtuple
 
-BUCKET_ACCELLERATE_CONFIGURATION = "BucketAccelerateConfiguration"
+BUCKET_ACCELERATE_CONFIGURATION = "BucketAccelerateConfiguration"
 BUCKET_ACL = "BucketAcl"
 BUCKET_ANALYTICS_CONFIGURATION = "BucketAnalyticsConfiguration"
 BUCKET_CORS = "BucketCors"
@@ -25,7 +25,7 @@ BUCKET_LOCATION = "BucketLocation"
 BUCKET_LOGGING = "BucketLogging"
 BUCKET_METRIC_CONFIGURATION = "BucketMetricsConfiguration"
 BUCKET_NOTIFICATION = "BucketNotification"
-BUCKET_NOTIFICATION_CONFIGUTATION = "BucketNotificationConfiguration"
+BUCKET_NOTIFICATION_CONFIGURATION = "BucketNotificationConfiguration"
 BUCKET_POLICY = "BucketPolicy"
 BUCKET_REPLICATION = "BucketReplication"
 BUCKET_REQUEST_PAYMENT = "BucketRequestPayment"
@@ -46,7 +46,7 @@ CUSTOM_RESULT_PATHS = {
     MULTIPART_UPLOADS: "Uploads",
     OBJECT_VERSIONS: "[[Versions][].{Versions:@},[DeleteMarkers][].{DeleteMarkers:@}][]",
     OBJECTS: "Contents",
-    BUCKET_ACCELLERATE_CONFIGURATION: '{"Status": Status}',
+    BUCKET_ACCELERATE_CONFIGURATION: '{"Status": Status}',
     BUCKET_ACL: "",
     BUCKET_ANALYTICS_CONFIGURATION: "",
     BUCKET_CORS: "CORSRules",
@@ -57,7 +57,7 @@ CUSTOM_RESULT_PATHS = {
     BUCKET_LOGGING: "",
     BUCKET_METRIC_CONFIGURATION: "MetricsConfiguration",
     BUCKET_NOTIFICATION: "",
-    BUCKET_NOTIFICATION_CONFIGUTATION: "",
+    BUCKET_NOTIFICATION_CONFIGURATION: "",
     BUCKET_POLICY: '{ "Policy" : Policy }',
     BUCKET_REPLICATION: "ReplicationConfiguration",
     BUCKET_REQUEST_PAYMENT: '{"Payer" : Payer}',
@@ -76,7 +76,7 @@ RESOURCE_NAMES = [
     OBJECT_VERSIONS,
     OBJECTS,
     PARTS,
-    BUCKET_ACCELLERATE_CONFIGURATION,
+    BUCKET_ACCELERATE_CONFIGURATION,
     BUCKET_ACL,
     BUCKET_ANALYTICS_CONFIGURATION,
     BUCKET_CORS,
@@ -87,7 +87,7 @@ RESOURCE_NAMES = [
     BUCKET_LOGGING,
     BUCKET_METRIC_CONFIGURATION,
     BUCKET_NOTIFICATION,
-    BUCKET_NOTIFICATION_CONFIGUTATION,
+    BUCKET_NOTIFICATION_CONFIGURATION,
     BUCKET_POLICY,
     BUCKET_REPLICATION,
     BUCKET_REQUEST_PAYMENT,

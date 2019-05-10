@@ -301,7 +301,6 @@ class ScheduleHandler:
             payload = str.encode(safe_json(event))
             client = get_client_with_retries("lambda", ["invoke"], context=self._context)
             resp = client.invoke_with_retries(FunctionName=self._context.function_name,
-                                              Qualifier=self._context.function_version,
                                               InvocationType="Event", LogType="None", Payload=payload)
             self._logger.info(INFO_LAMBDA, resp["StatusCode"], payload)
         else:

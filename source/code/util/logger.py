@@ -140,7 +140,7 @@ class Logger:
         sns_arn = os.getenv(ENV_SNS_TOPIC, None)
         if sns_arn is not None:
             message = "Loggroup: {}\nLogstream {}\n{} : {}".format(self._loggroup, self._logstream, level, msg)
-            self.sns.publish_with_retries(TopicArn=sns_arn, Message=message)
+            self.sns.publish_with_retries(TopicArn=sns_arn, Message=message[0:262143])
 
     def info(self, msg, *args):
         """
