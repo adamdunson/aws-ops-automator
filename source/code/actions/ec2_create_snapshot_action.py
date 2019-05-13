@@ -267,6 +267,8 @@ class Ec2CreateSnapshotAction:
     def create_volume_snapshot(self, volume):
         def get_tags_for_volume_snapshot(vol):
             vol_tags = self.copied_instance_tagfilter.pairs_matching_any_filter(self.instance_tags)
+            if 'Name' in vol_tags:
+                vol_tags['InstanceName'] = vol_tags['Name']
             tags_on_volume = self.all_volume_tags.get(vol, {})
             vol_tags.update(self.copied_volume_tagfiter.pairs_matching_any_filter(tags_on_volume))
             vol_tags.update(self.snapshot_tags)
