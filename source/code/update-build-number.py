@@ -17,7 +17,7 @@ version_file = sys.argv[1]
 with open(version_file, "rt") as f:
     version = f.readline()
 
-build = int(version.split(".")[3]) + 1
+build = int(version.split(".")[5]) + 1
 
 with open(version_file, "wt") as f:
     f.write("{}.{}".format(version[::-1].partition('.')[2][::-1], build))
